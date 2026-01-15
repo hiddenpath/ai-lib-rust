@@ -25,7 +25,7 @@ async fn test_rate_limiter_header_extraction() {
         HeaderValue::from_str("60").unwrap(),
     ); // Reset in 60 seconds
 
-    // 3. Update limits manually
+    // 3. Update limits manually (public method for testing)
     client.update_rate_limits(&headers).await;
 
     // 4. Check if rate limiter now predicts a wait

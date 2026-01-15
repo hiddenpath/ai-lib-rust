@@ -7,7 +7,7 @@
 //! Run:
 //!   DEEPSEEK_API_KEY=your_key cargo run --example deepseek_chat_stream
 
-use ai_lib_rust::prelude::*;
+use ai_lib_rust::{AiClient, Message};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,11 +24,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Message::user("Say hello in one short sentence, then list two numbers."),
     ];
 
-    let client = Provider::DeepSeek.model("deepseek-chat").build_client().await?;
+    // Create client directly using provider/model string (protocol-driven)
+    let client = AiClient::new("deepseek/deepseek-chat").await?;
 
-    // Use facade: stream then collect into UnifiedResponse (developer-friendly).
+    // Stream then collect into UnifiedResponse
     let resp = client
-        .chat_completion(ChatCompletionRequest::new(messages).temperature(0.2).max_tokens(128).stream())
+        .chat()
+        .messages(messages)
+        .temperature(0.2)
+        .max_tokens(128)
+        .stream()
+        .execute()
         .await?;
 
     println!("\n\n--- Content ---\n{}", resp.content);

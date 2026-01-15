@@ -1,4 +1,4 @@
-use ai_lib_rust::AiClient;
+use ai_lib_rust::{AiClient, EndpointExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = AiClient::new("deepseek/deepseek-chat").await?;
 
     println!("Requesting model list from provider...");
-    match client.list_remote_models().await {
+    match EndpointExt::list_remote_models(&client).await {
         Ok(models) => {
             println!("Available models:");
             for model in models {

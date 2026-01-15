@@ -161,8 +161,9 @@ impl<'a> ChatRequestBuilder<'a> {
                 if let Some(crate::client::policy::Decision::Fallback) =
                     policy.pre_decide(&sig, has_fallback)
                 {
-                    last_err = Some(crate::Error::runtime(
+                    last_err = Some(crate::Error::runtime_with_context(
                         "skipped candidate due to signals",
+                        crate::ErrorContext::new().with_source("policy_engine"),
                     ));
                     break;
                 }
@@ -179,7 +180,10 @@ impl<'a> ChatRequestBuilder<'a> {
                         let first = if let Some(t) = client.attempt_timeout {
                             match tokio::time::timeout(t, next_fut).await {
                                 Ok(v) => v,
-                                Err(_) => Some(Err(crate::Error::runtime("attempt timeout"))),
+                                Err(_) => Some(Err(crate::Error::runtime_with_context(
+                                    "attempt timeout",
+                                    crate::ErrorContext::new().with_source("timeout_policy"),
+                                ))),
                             }
                         } else {
                             next_fut.await
@@ -260,7 +264,12 @@ impl<'a> ChatRequestBuilder<'a> {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| crate::Error::runtime("all streaming attempts failed")))
+        Err(last_err.unwrap_or_else(|| {
+            crate::Error::runtime_with_context(
+                "all streaming attempts failed",
+                crate::ErrorContext::new().with_source("retry_policy"),
+            )
+        }))
     }
 
     /// Execute the request and return a cancellable stream of events.
@@ -276,13 +285,37 @@ impl<'a> ChatRequestBuilder<'a> {
 
     /// Execute the request and return the complete response.
     pub async fn execute(self) -> Result<UnifiedResponse> {
-        // Similar to execute_stream but collects all events
-        let mut stream = self.execute_stream().await?;
+        let stream_flag = self.stream;
+        let client = self.client;
+        let unified_req = self.into_unified_request();
+        
+        // If streaming is not explicitly enabled, use non-streaming execution
+        if !stream_flag {
+            let (resp, _stats) = client.call_model_with_stats(unified_req).await?;
+            return Ok(resp);
+        }
+        
+        // For streaming requests, collect all events
+        // Rebuild builder for streaming execution
+        let mut stream = {
+            let builder = ChatRequestBuilder {
+                client,
+                messages: unified_req.messages.clone(),
+                temperature: unified_req.temperature,
+                max_tokens: unified_req.max_tokens,
+                stream: true,
+                tools: unified_req.tools.clone(),
+                tool_choice: unified_req.tool_choice.clone(),
+            };
+            builder.execute_stream().await?
+        };
         let mut response = UnifiedResponse::default();
         let mut tool_asm = crate::utils::tool_call_assembler::ToolCallAssembler::new();
 
         use futures::StreamExt;
+        let mut event_count = 0;
         while let Some(event) = stream.next().await {
+            event_count += 1;
             match event? {
                 StreamingEvent::PartialContentDelta { content, .. } => {
                     response.content.push_str(&content);
@@ -290,7 +323,7 @@ impl<'a> ChatRequestBuilder<'a> {
                 StreamingEvent::ToolCallStarted {
                     tool_call_id,
                     tool_name,
-                    ..
+                    .. 
                 } => {
                     tool_asm.on_started(tool_call_id, tool_name);
                 }
@@ -307,8 +340,17 @@ impl<'a> ChatRequestBuilder<'a> {
                 StreamingEvent::StreamEnd { .. } => {
                     break;
                 }
-                _ => {}
+                other => {
+                    // Log unexpected events for debugging
+                    tracing::warn!("Unexpected event in execute(): {:?}", other);
+                }
             }
+        }
+
+        if event_count == 0 {
+            tracing::warn!("No events received from stream");
+        } else if response.content.is_empty() {
+            tracing::warn!("Received {} events but content is empty. This might indicate a non-streaming response or event mapping issue.", event_count);
         }
 
         response.tool_calls = tool_asm.finalize();

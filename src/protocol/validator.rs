@@ -17,26 +17,52 @@ impl ProtocolValidator {
     /// Create a new validator with the v1 schema.
     ///
     /// Schema loading strategy (in order):
-    /// 1. GitHub URL (canonical source) - used in production and CI
-    /// 2. Local file system (for offline development) - fallback if GitHub unavailable
+    /// 1. GitHub URL (canonical source) - priority, used in production and CI
+    /// 2. AI_PROTOCOL_DIR as GitHub URL (if set and is a URL)
+    /// 3. Local file system (for offline development) - fallback if GitHub unavailable
     ///
     /// This ensures all validation uses the same standard schema, while allowing
     /// local development when network is unavailable.
     pub fn new() -> Result<Self, ProtocolError> {
-        // Try GitHub URL first (canonical source)
-        let schema_content = if let Ok(content) = Self::fetch_schema_from_github() {
-            Some(content)
-        } else {
-            // Fallback to local file system for offline development
-            Self::load_schema_from_local()
-        }
-        .ok_or_else(|| {
-            ProtocolError::SchemaError(
-                "JSON Schema not found: GitHub URL unavailable and no local file found. \
-                 Set AI_PROTOCOL_DIR for local development, or ensure network access for GitHub."
-                    .to_string(),
-            )
-        })?;
+        // Priority 1: Try local file system first (for development)
+        // This allows developers to test schema changes locally before pushing to GitHub
+        let schema_content = Self::load_schema_from_local()
+            .or_else(|| {
+                // Priority 2: Try GitHub URL (canonical source)
+                Self::fetch_schema_from_github().ok()
+            })
+            .or_else(|| {
+                // Priority 3: Try AI_PROTOCOL_DIR as GitHub URL (if it's a URL)
+                if let Ok(root) =
+                    std::env::var("AI_PROTOCOL_DIR").or_else(|_| std::env::var("AI_PROTOCOL_PATH"))
+                {
+                    if root.starts_with("http://") || root.starts_with("https://") {
+                        let schema_url = if root.ends_with('/') {
+                            format!("{}schemas/v1.json", root)
+                        } else {
+                            format!("{}/schemas/v1.json", root)
+                        };
+                        Self::fetch_schema_from_url(&schema_url).ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                // Priority 4: Embedded canonical schema (offline-safe for published crates).
+                Some(Self::embedded_schema_v1().to_string())
+            })
+            .unwrap_or_else(|| {
+                // Final fallback (offline-safe): use a minimal built-in schema so the runtime
+                // can still operate, and rely on basic validation + runtime checks.
+                tracing::warn!(
+                    "AI-Protocol JSON Schema not found (offline). Falling back to built-in minimal schema. \
+                     Tip: set AI_PROTOCOL_PATH to your local ai-protocol checkout or a GitHub raw URL."
+                );
+                Self::builtin_minimal_schema()
+            });
 
         let schema_value: serde_json::Value = serde_json::from_str(&schema_content)
             .map_err(|e| ProtocolError::SchemaError(format!("Invalid JSON Schema: {}", e)))?;
@@ -49,55 +75,164 @@ impl ProtocolValidator {
         Ok(Self { schema })
     }
 
-    /// Fetch schema from GitHub (canonical source).
-    fn fetch_schema_from_github() -> Result<String, Box<dyn std::error::Error>> {
-        // Use tokio runtime to execute async HTTP request
-        // This is acceptable since validator is typically created at startup
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
+    /// Minimal schema used as an offline fallback when the canonical schema cannot be loaded.
+    ///
+    /// This schema is intentionally conservative: it checks for presence of the most critical
+    /// top-level fields, but does not attempt to fully validate all nested shapes.
+    fn builtin_minimal_schema() -> String {
+        // Draft7 is used by the `jsonschema` crate defaults we compile with.
+        // We keep this small to avoid embedding large schema assets in the runtime crate.
+        r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "id",
+    "protocol_version",
+    "endpoint",
+    "availability",
+    "capabilities",
+    "auth",
+    "status",
+    "category",
+    "official_url",
+    "support_contact",
+    "parameter_mappings"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "protocol_version": { "type": "string", "minLength": 1 },
+    "endpoint": {
+      "type": "object",
+      "required": ["base_url"],
+      "properties": { "base_url": { "type": "string", "minLength": 1 } }
+    },
+    "availability": { "type": "object" },
+    "capabilities": { "type": "object" },
+    "auth": { "type": "object" },
+    "parameter_mappings": { "type": "object" }
+  },
+  "additionalProperties": true
+}"#
+        .to_string()
+    }
+
+    /// Embedded canonical AI-Protocol schema (v1.json) shipped with the crate.
+    ///
+    /// This guarantees schema validation works for published crates even when:
+    /// - GitHub is unreachable
+    /// - the user does not have a local ai-protocol checkout
+    fn embedded_schema_v1() -> &'static str {
+        include_str!("schema_v1.json")
+    }
+
+    /// Fetch schema from a specific URL.
+    fn fetch_schema_from_url(url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Use a separate thread to avoid tokio runtime nesting issues
+        // This ensures the blocking client runs in its own thread context
+        let url = url.to_string();
+        let (tx, rx) = std::sync::mpsc::channel();
         
-        rt.block_on(async {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .build()
-                .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        std::thread::spawn(move || {
+            let result = (|| -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+                
+                let response = client
+                    .get(&url)
+                    .send()
+                    .map_err(|e| format!("HTTP request failed: {}", e))?;
+                
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "HTTP {}: {}",
+                        response.status(),
+                        response.text().unwrap_or_default()
+                    )
+                    .into());
+                }
+                
+                Ok(response.text().map_err(|e| format!("Failed to read response: {}", e))?)
+            })();
             
-            let response = client
-                .get(Self::SCHEMA_GITHUB_URL)
-                .send()
-                .await
-                .map_err(|e| format!("HTTP request failed: {}", e))?;
-            
-            if !response.status().is_success() {
-                return Err(format!(
-                    "HTTP {}: {}",
-                    response.status(),
-                    response.text().await.unwrap_or_default()
-                )
-                .into());
-            }
-            
-            Ok(response.text().await.map_err(|e| format!("Failed to read response: {}", e))?)
-        })
+            let _ = tx.send(result);
+        });
+        
+        rx.recv()
+            .map_err(|e| format!("Failed to receive result from thread: {}", e))?
+    }
+
+    /// Fetch schema from GitHub (canonical source).
+    fn fetch_schema_from_github() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        Self::fetch_schema_from_url(Self::SCHEMA_GITHUB_URL)
     }
 
     /// Load schema from local file system (fallback for offline development).
     fn load_schema_from_local() -> Option<String> {
-        let mut schema_paths = vec![
-            "ai-protocol/schemas/v1.json".to_string(),
-            "../ai-protocol/schemas/v1.json".to_string(),
-            "../../ai-protocol/schemas/v1.json".to_string(),
-        ];
+        use std::path::PathBuf;
+        
+        let mut schema_paths: Vec<PathBuf> = Vec::new();
 
+        // If AI_PROTOCOL_DIR/AI_PROTOCOL_PATH is set and is a local path, try resolving it in a
+        // few robust ways (tests often set relative paths, and the test binary cwd is not crate root).
         if let Ok(root) =
             std::env::var("AI_PROTOCOL_DIR").or_else(|_| std::env::var("AI_PROTOCOL_PATH"))
         {
-            schema_paths.insert(0, format!("{}/schemas/v1.json", root));
+            if !root.starts_with("http://") && !root.starts_with("https://") {
+                let root_pb = PathBuf::from(&root);
+
+                // Candidate bases to resolve relative paths:
+                // - as-is (if absolute)
+                // - relative to current_dir
+                // - relative to current_exe dir
+                // - relative to crate root (compile-time)
+                let mut bases: Vec<PathBuf> = Vec::new();
+                bases.push(root_pb.clone());
+                if root_pb.is_relative() {
+                    if let Ok(cd) = std::env::current_dir() {
+                        bases.push(cd.join(&root_pb));
+                    }
+                    if let Ok(exe) = std::env::current_exe() {
+                        if let Some(dir) = exe.parent() {
+                            bases.push(dir.join(&root_pb));
+                        }
+                    }
+                    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                    bases.push(crate_dir.join(&root_pb));
+                }
+
+                for base in bases {
+                    // Allow env var to point either to repo root or directly to schema file.
+                    if base.extension().and_then(|s| s.to_str()) == Some("json") {
+                        schema_paths.push(base.clone());
+                    } else {
+                        schema_paths.push(base.join("schemas").join("v1.json"));
+                    }
+                }
+            }
         }
 
-        schema_paths
-            .iter()
-            .find_map(|path| std::fs::read_to_string(path).ok())
+        // Priority 2: Windows development convenience path (always check, add if exists)
+        let win_dev = PathBuf::from(r"D:\ai-protocol\schemas\v1.json");
+        schema_paths.push(win_dev);
+
+        // Priority 3: Common development paths (relative to crate root for determinism).
+        let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        schema_paths.push(crate_dir.join("ai-protocol").join("schemas").join("v1.json"));
+        schema_paths.push(crate_dir.join("..").join("ai-protocol").join("schemas").join("v1.json"));
+        schema_paths.push(crate_dir.join("..").join("..").join("ai-protocol").join("schemas").join("v1.json"));
+
+        // Try all paths in order
+        for path in &schema_paths {
+            if path.exists() {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    return Some(content);
+                }
+            }
+        }
+        
+        None
     }
 
     /// Validate a protocol manifest using the compiled JSON Schema
@@ -136,7 +271,7 @@ impl ProtocolValidator {
             ));
         }
 
-        if manifest.base_url.is_empty() {
+        if manifest.endpoint.base_url.is_empty() {
             return Err(ProtocolError::ValidationError(
                 "Base URL is required".to_string(),
             ));

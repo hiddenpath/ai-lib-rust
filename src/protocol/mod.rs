@@ -53,43 +53,77 @@ pub enum ProtocolError {
 }
 
 /// Protocol manifest structure (parsed from YAML)
+/// 
+/// Required fields per schema: id, protocol_version, endpoint, availability, capabilities
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtocolManifest {
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
+    
+    // Required fields
     pub id: String,
+    pub protocol_version: String,
+    pub endpoint: EndpointDefinition,
+    pub availability: AvailabilityConfig,
+    pub capabilities: Capabilities,
+    
+    // Provider metadata (required in manifests)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
-    pub protocol_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    pub base_url: String,
+    pub status: String, // stable/beta/deprecated
+    pub category: String, // ai_provider / model_provider / third_party_aggregator
+    pub official_url: String,
+    pub support_contact: String,
+    
+    // Auth and configuration
     pub auth: AuthConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_format: Option<String>,
     pub parameter_mappings: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_paths: Option<HashMap<String, String>>,
+    
+    // Streaming and features
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub streaming: Option<StreamingConfig>,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub features: Option<FeaturesConfig>,
+    
+    // Endpoints and services
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoints: Option<HashMap<String, EndpointConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub services: Option<HashMap<String, ServiceConfig>>,
+    
+    // API families
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_families: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_api_family: Option<String>,
+    
+    // Tooling and termination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub termination: Option<TerminationConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tooling: Option<ToolingConfig>,
+    
+    // Error handling and resilience
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_policy: Option<RetryPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_classification: Option<ErrorClassification>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_limit_headers: Option<RateLimitHeaders>,
+    
+    // Experimental features
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experimental_features: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,12 +194,60 @@ fn default_method_get() -> String {
     "GET".to_string()
 }
 
+/// Structured endpoint definition (v1.1+ extension)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EndpointDefinition {
+    pub base_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>, // https, http, ws, wss
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u32>,
+}
+
+/// Capabilities object format (v1.1+)
+/// Required fields: streaming, tools, vision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Capabilities {
+    pub streaming: bool,
+    pub tools: bool,
+    pub vision: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub agentic: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub parallel_tools: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reasoning: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub multimodal: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub audio: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 impl ProtocolManifest {
     /// Check if protocol supports a specific capability
     pub fn supports_capability(&self, capability: &str) -> bool {
-        self.capabilities.iter().any(|c| c == capability)
+        match capability {
+            "streaming" => self.capabilities.streaming,
+            "tools" => self.capabilities.tools,
+            "vision" => self.capabilities.vision,
+            "agentic" => self.capabilities.agentic,
+            "parallel_tools" => self.capabilities.parallel_tools,
+            "reasoning" => self.capabilities.reasoning,
+            "multimodal" => self.capabilities.multimodal || self.capabilities.vision || self.capabilities.audio,
+            "audio" => self.capabilities.audio,
+            _ => false,
+        }
     }
-
+    
+    /// Get base URL from endpoint definition
+    pub fn get_base_url(&self) -> &str {
+        &self.endpoint.base_url
+    }
+    
     /// Compile unified request to provider-specific format
     pub fn compile_request(
         &self,
@@ -472,6 +554,28 @@ pub struct ErrorClassification {
     pub by_http_status: Option<HashMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_error_status: Option<HashMap<String, String>>,
+}
+
+/// Availability and health checking configuration (v1.1+ extension)
+/// Required fields: required, regions, check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailabilityConfig {
+    pub required: bool,
+    pub regions: Vec<String>, // cn, global, us, eu
+    pub check: HealthCheckConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<Vec<String>>,
+}
+
+/// Health check endpoint configuration
+/// Required fields: method, path, expected_status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthCheckConfig {
+    pub method: String, // HEAD, GET
+    pub path: String,
+    pub expected_status: Vec<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

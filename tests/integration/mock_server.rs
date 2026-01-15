@@ -23,18 +23,13 @@ impl MockServerFixture {
     }
 
     /// Create a test client with the mock server as base URL
-    /// This requires a minimal protocol manifest pointing to the mock server
-    pub async fn create_test_client(&self, provider_id: &str) -> ai_lib_rust::Result<AiClient> {
-        // For integration tests, we need to create a minimal manifest
-        // that points to our mock server. This is a simplified approach.
-        // In a real scenario, we'd load a real manifest and override base_url.
-        
-        // For now, return an error indicating this needs implementation
-        // The actual implementation would require modifying ProtocolManifest
-        // to allow base_url override, or creating a test manifest loader.
-        Err(ai_lib_rust::Error::runtime(
-            "Test client creation not yet implemented. Requires base_url override support."
-        ))
+    /// This uses the base_url_override feature to inject the mock server URL
+    pub async fn create_test_client(&self, model: &str) -> ai_lib_rust::Result<AiClient> {
+        // Use the builder's base_url_override to inject the mock server URL
+        ai_lib_rust::AiClientBuilder::new()
+            .base_url_override(&self.base_url)
+            .build(model)
+            .await
     }
 
     /// Create a mock for a successful streaming response (SSE)

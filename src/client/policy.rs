@@ -38,22 +38,31 @@ impl PolicyEngine {
     }
 
     /// Validates if the manifest supports all capabilities required by the request.
+    ///
+    /// This is a pre-flight guard that validates user intent against protocol capabilities
+    /// before making any network requests, saving latency and cost.
     pub fn validate_capabilities(&self, request: &crate::protocol::UnifiedRequest) -> Result<()> {
         let manifest = &self.manifest;
 
         // Check for Tooling support
         if !request.tools.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
             if !manifest.supports_capability("tools") {
-                return Err(Error::Validation(
-                    "Model does not support tool calling".to_string(),
+                return Err(Error::validation_with_context(
+                    "Model does not support tool calling",
+                    crate::ErrorContext::new()
+                        .with_field_path("request.tools")
+                        .with_source("capability_validator"),
                 ));
             }
         }
 
         // Check for Streaming support
         if request.stream && !manifest.supports_capability("streaming") {
-            return Err(Error::Validation(
-                "Model does not support streaming".to_string(),
+            return Err(Error::validation_with_context(
+                "Model does not support streaming",
+                crate::ErrorContext::new()
+                    .with_field_path("request.stream")
+                    .with_source("capability_validator"),
             ));
         }
 
@@ -68,11 +77,19 @@ impl PolicyEngine {
                 || manifest.supports_capability("audio");
 
             if !supports_multimodal {
-                return Err(Error::Validation(
-                    "Model does not support multimodal content (images/audio)".to_string(),
+                return Err(Error::validation_with_context(
+                    "Model does not support multimodal content (images/audio)",
+                    crate::ErrorContext::new()
+                        .with_field_path("request.messages")
+                        .with_source("capability_validator"),
                 ));
             }
         }
+
+        // Parameter range validation (pre-flight guard to avoid invalid requests)
+        // Note: Currently, parameter constraints are not defined in the protocol manifest.
+        // This is a placeholder for future enhancement when capabilities include constraints.
+        // For now, we rely on provider APIs to reject invalid parameters.
 
         Ok(())
     }
@@ -141,7 +158,7 @@ impl PolicyEngine {
                 ..
             } => (*retryable, *fallbackable, *retry_after_ms),
             Error::Transport(_) => (true, true, None),
-            Error::Runtime(msg) => {
+            Error::Runtime { message: msg, .. } => {
                 // Preflight and guard errors are policy-relevant.
                 // Keep these rules simple and explainable:
                 // - circuit breaker open => try fallback if available

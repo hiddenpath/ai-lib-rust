@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.2.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,7 @@ categories = ["api-bindings", "network-programming", "asynchronous"]
 include = [
   "Cargo.toml",
   "README.md",
+  "docs/ARCHITECTURE.md",
   "CHANGELOG.md",
   "LICENSE-APACHE",
   "LICENSE-MIT",
@@ -33,7 +34,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 
 # HTTP client
-reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls", "blocking"] }
 
 # JSON manipulation
 tokio-util = { version = "0.7", features = ["codec"] }
@@ -67,6 +68,16 @@ base64 = "0.22"
 tokio-test = "0.4"
 tokio-stream = "0.1"
 mockito = "1.2"
+
+[features]
+# Keep runtime core lean; opt-in progressive complexity to preserve a stable API surface.
+default = []
+
+# Model management / routing helpers (pure logic layer; optional).
+routing_mvp = []
+
+# Request/response interceptor hooks (logging/metrics/custom retry wrappers at app layer).
+interceptors = []
 
 [[example]]
 name = "basic_usage"

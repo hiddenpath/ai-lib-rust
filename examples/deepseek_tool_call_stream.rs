@@ -11,12 +11,13 @@
 //! Run:
 //!   DEEPSEEK_API_KEY=your_key cargo run --example deepseek_tool_call_stream
 
-use ai_lib_rust::prelude::*;
+use ai_lib_rust::{AiClient, Message};
+use ai_lib_rust::types::tool::{ToolDefinition, FunctionDefinition};
 
-fn web_search_tool() -> ai_lib_rust::types::tool::ToolDefinition {
-    ai_lib_rust::types::tool::ToolDefinition {
+fn web_search_tool() -> ToolDefinition {
+    ToolDefinition {
         tool_type: "function".to_string(),
-        function: ai_lib_rust::types::tool::FunctionDefinition {
+        function: FunctionDefinition {
             name: "web_search".to_string(),
             description: Some("Search the web for up-to-date information.".to_string()),
             parameters: Some(serde_json::json!({
@@ -48,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let client = Provider::DeepSeek.model("deepseek-chat").build_client().await?;
+    // Create client directly using provider/model string (protocol-driven)
+    let client = AiClient::new("deepseek/deepseek-chat").await?;
 
     let messages = vec![
         Message::system("You are a helpful assistant. You MUST call the provided tool before answering."),
@@ -62,13 +64,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "function": { "name": "web_search" }
     });
 
-    let req = ChatCompletionRequest::new(messages)
+    let resp = client
+        .chat()
+        .messages(messages)
         .temperature(0.0)
         .max_tokens(256)
         .tools(vec![web_search_tool()])
-        .tool_choice(tool_choice);
-
-    let resp = client.chat_completion(req).await?;
+        .tool_choice(tool_choice)
+        .execute()
+        .await?;
 
     println!("\n\n--- Content ---\n{}", resp.content);
     println!("\n--- Tool calls ---\n{:#?}", resp.tool_calls);

@@ -8,7 +8,6 @@
 //! provider-specific logic.
 
 pub mod client;
-pub mod facade;
 pub mod pipeline;
 pub mod protocol;
 pub mod telemetry;
@@ -17,18 +16,30 @@ pub mod resilience;
 pub mod types;
 pub mod utils;
 
+#[cfg(feature = "routing_mvp")]
+pub mod routing;
+
+#[cfg(feature = "interceptors")]
+pub mod interceptors;
+
 // Re-export main types for convenience
 pub use client::CallStats;
 pub use client::{AiClient, AiClientBuilder};
 pub use client::CancelHandle;
 pub use client::ChatBatchRequest;
-pub use facade::provider::{ModelRef, Provider};
-pub use facade::prelude;
+pub use client::EndpointExt;
 pub use telemetry::{FeedbackEvent, FeedbackSink};
 pub use types::{
     events::StreamingEvent,
     message::{Message, MessageRole},
     tool::ToolCall,
+};
+
+// Optional re-exports
+#[cfg(feature = "routing_mvp")]
+pub use routing::{
+    CustomModelManager, LoadBalancingStrategy, ModelArray, ModelCapabilities, ModelEndpoint,
+    ModelInfo, ModelSelectionStrategy, PerformanceMetrics, PricingInfo, QualityTier, SpeedTier,
 };
 
 use futures::Stream;
@@ -45,5 +56,4 @@ pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = PipeResult<T>> + Send + 'a
 
 /// Error type for the library
 pub mod error;
-
-pub use error::Error;
+pub use error::{Error, ErrorContext};

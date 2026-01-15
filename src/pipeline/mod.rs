@@ -12,6 +12,10 @@ pub mod event_map;
 pub mod fan_out;
 pub mod select;
 
+// Resilience Operators
+pub mod fallback;
+pub mod retry;
+
 #[cfg(test)]
 mod tests;
 

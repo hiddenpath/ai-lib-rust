@@ -1,0 +1,815 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/hiddenpath/ai-protocol/main/schemas/v1.json",
+  "title": "AI-Protocol v1.1 Specification",
+  "description": "JSON Schema for AI-Protocol v1.1 provider and model specifications",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "anyOf": [
+        {
+          "enum": [
+            "https://raw.githubusercontent.com/hiddenpath/ai-protocol/main/schemas/v1.json"
+          ]
+        },
+        {
+          "pattern": "^(https://raw\\.githubusercontent\\.com/hiddenpath/ai-protocol/(main|master|v\\d+\\.\\d+)/schemas/v1\\.json|\\.\\./schemas/v1\\.json)$"
+        }
+      ],
+      "description": "Schema reference: GitHub raw URL (preferred) or relative path (for local development)"
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the provider"
+    },
+    "provider_id": {
+      "type": "string",
+      "description": "Optional provider identifier used for auth key lookup and compatibility aliases."
+    },
+    "protocol_version": {
+      "type": "string",
+      "enum": [
+        "1.1",
+        "1.5"
+      ],
+      "description": "AI-Protocol version this specification conforms to"
+    },
+    "version": {
+      "type": "string",
+      "description": "Provider API version"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable provider name"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["stable", "beta", "deprecated"],
+      "description": "Provider status"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["ai_provider", "model_provider", "third_party_aggregator"],
+      "description": "Provider category"
+    },
+    "official_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Official documentation website"
+    },
+    "support_contact": {
+      "type": "string",
+      "format": "uri",
+      "description": "Support or feedback link"
+    },
+    "endpoint": {
+      "type": "object",
+      "description": "Structured endpoint definition (v1.1+ extension)",
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Absolute base URL of the provider API"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["https", "http", "ws", "wss"],
+          "description": "Protocol used for communication"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "description": "Default timeout for requests in milliseconds"
+        }
+      },
+      "required": ["base_url"],
+      "additionalProperties": false
+    },
+    "availability": {
+      "type": "object",
+      "description": "Provider availability configuration and health check (v1.1+ extension)",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether the provider must be reachable at runtime startup"
+        },
+        "regions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["cn", "global", "us", "eu"]
+          },
+          "uniqueItems": true,
+          "description": "Geographic regions where the provider is available"
+        },
+        "check": {
+          "type": "object",
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["HEAD", "GET"],
+              "description": "HTTP method for health check"
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/",
+              "description": "Path relative to base_url for health check"
+            },
+            "expected_status": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599
+              },
+              "description": "HTTP status codes that indicate healthy state"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 100,
+              "description": "Timeout for health check in milliseconds"
+            }
+          },
+          "required": ["method", "path", "expected_status"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["required", "regions", "check"],
+      "additionalProperties": false
+    },
+    "base_url_template": {
+      "type": "string",
+      "description": "Template for dynamic base URL construction"
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "bearer",
+            "api_key",
+            "query_param"
+          ]
+        },
+        "token_env": {
+          "type": "string",
+          "description": "Environment variable containing the token"
+        },
+        "param_name": {
+          "type": "string",
+          "description": "Query parameter name for auth"
+        },
+        "key_env": {
+          "type": "string",
+          "description": "Environment variable for API key"
+        },
+        "header_name": {
+          "type": "string",
+          "description": "Custom header name for API key"
+        },
+        "extra_headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          }
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "payload_format": {
+      "type": "string",
+      "description": "Format identifier for request payload structure"
+    },
+    "parameter_mappings": {
+      "type": "object",
+      "description": "Mapping from standard parameters to provider-specific parameters",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "response_format": {
+      "type": "string",
+      "description": "Format identifier for response structure"
+    },
+    "response_paths": {
+      "type": "object",
+      "description": "JSON paths for extracting response data",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "streaming": {
+      "type": "object",
+      "properties": {
+        "event_format": {
+          "type": "string",
+          "description": "Streaming event format identifier"
+        },
+        "decoder": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": [
+                "sse",
+                "anthropic_sse",
+                "gemini_json",
+                "cohere_native"
+              ]
+            },
+            "strategy": {
+              "type": "string",
+              "description": "Specific decoding strategy"
+            },
+            "delimiter": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "done_signal": {
+              "type": "string"
+            }
+          }
+        },
+        "frame_selector": {
+          "type": "string",
+          "description": "JSONPath expression to identify valid frames"
+        },
+        "candidate": {
+          "type": "object",
+          "properties": {
+            "candidate_id_path": {
+              "type": "string"
+            },
+            "fan_out": {
+              "type": "boolean"
+            }
+          }
+        },
+        "accumulator": {
+          "type": "object",
+          "properties": {
+            "stateful_tool_parsing": {
+              "type": "boolean"
+            },
+            "key_path": {
+              "type": "string"
+            },
+            "flush_on": {
+              "type": "string"
+            }
+          }
+        },
+        "event_map": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "match": {
+                "type": "string"
+              },
+              "emit": {
+                "type": "string",
+                "enum": [
+                  "PartialContentDelta",
+                  "ThinkingDelta",
+                  "PartialToolCall",
+                  "ToolCallStarted",
+                  "ToolCallEnded",
+                  "Metadata",
+                  "FinalCandidate",
+                  "StreamEnd",
+                  "StreamError"
+                ]
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "extract": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "match",
+              "emit"
+            ]
+          }
+        },
+        "stop_condition": {
+          "type": "string"
+        },
+        "extra_metadata_path": {
+          "type": "string"
+        },
+        "content_path": {
+          "type": "string"
+        },
+        "tool_call_path": {
+          "type": "string"
+        },
+        "usage_path": {
+          "type": "string"
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "multi_candidate": {
+          "type": "object",
+          "properties": {
+            "support_type": {
+              "type": "string",
+              "enum": [
+                "native",
+                "simulated"
+              ]
+            },
+            "param_name": {
+              "type": "string"
+            },
+            "max_concurrent": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "support_type"
+          ]
+        },
+        "response_mapping": {
+          "type": "object",
+          "properties": {
+            "tool_calls": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "filter": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "array_fan_out": {
+                  "type": "boolean"
+                },
+                "id_strategy": {
+                  "type": "string"
+                }
+              }
+            },
+            "error": {
+              "type": "object",
+              "properties": {
+                "message_path": {
+                  "type": "string"
+                },
+                "code_path": {
+                  "type": "string"
+                },
+                "type_path": {
+                  "type": "string"
+                },
+                "param_path": {
+                  "type": "string"
+                },
+                "request_id_path": {
+                  "type": "string"
+                },
+                "status_path": {
+                  "type": "string"
+                },
+                "errors_path": {
+                  "type": "string"
+                },
+                "details_path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Provider capability definitions",
+      "required": ["streaming", "tools", "vision"],
+      "properties": {
+        "streaming": {
+          "type": "boolean",
+          "description": "Supports streaming responses"
+        },
+        "tools": {
+          "type": "boolean",
+          "description": "Supports tool / function calling"
+        },
+        "vision": {
+          "type": "boolean",
+          "description": "Supports image or multimodal inputs"
+        },
+        "agentic": {
+          "type": "boolean",
+          "default": false,
+          "description": "Supports agentic reasoning and multi-turn tool sequences"
+        },
+        "reasoning": {
+          "type": "boolean",
+          "default": false,
+          "description": "Supports extended reasoning / thinking blocks"
+        },
+        "parallel_tools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Supports parallel tool invocations"
+        }
+      },
+      "additionalProperties": false
+    },
+    "experimental_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "connection_vars": {
+      "type": "object",
+      "description": "Template variables for dynamic URL construction",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "api_families": {
+      "type": "array",
+      "description": "Declares which API families are supported by this provider configuration (helps avoid mixing incompatible request/response models).",
+      "items": {
+        "type": "string"
+      }
+    },
+    "default_api_family": {
+      "type": "string",
+      "description": "The default API family to use when the runtime does not specify one explicitly."
+    },
+    "endpoints": {
+      "type": "object",
+      "description": "Named capability endpoints (e.g., chat, embed, vision).",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "format": "uri",
+            "description": "Absolute URL for non-HTTP endpoints (e.g., WebSocket)"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string",
+                "default": "POST"
+              },
+              "adapter": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ]
+          }
+        ]
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Management service endpoints (e.g., list_models, billing).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "default": "GET"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "query_params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "response_binding": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    "termination": {
+      "type": "object",
+      "description": "Provider-specific termination fields and mapping guidance.",
+      "properties": {
+        "source_field": {
+          "type": "string",
+          "description": "Field name or JSON path where provider reports termination reason (e.g., finish_reason, stop_reason)."
+        },
+        "mapping": {
+          "type": "object",
+          "description": "Optional mapping from provider-specific reasons to ai-protocol standard termination reasons.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional human-readable notes about streaming/non-streaming behavior."
+        }
+      },
+      "required": [
+        "source_field"
+      ],
+      "additionalProperties": false
+    },
+    "tooling": {
+      "type": "object",
+      "description": "Provider-specific tool invocation representation and normalization hints.",
+      "properties": {
+        "source_model": {
+          "type": "string",
+          "description": "How the provider represents tool invocations in responses/streams.",
+          "enum": [
+            "openai_tool_calls",
+            "anthropic_content_blocks",
+            "gemini_function_call",
+            "unknown"
+          ]
+        },
+        "tool_use": {
+          "type": "object",
+          "description": "Field mapping hints for normalizing tool invocation to standard_schema.content_blocks.tool_use.",
+          "properties": {
+            "id_path": {
+              "type": "string"
+            },
+            "index_path": {
+              "type": "string",
+              "description": "Optional path for tool-call index in streaming deltas when id is not present on every frame."
+            },
+            "name_path": {
+              "type": "string"
+            },
+            "input_path": {
+              "type": "string"
+            },
+            "input_format": {
+              "type": "string",
+              "enum": [
+                "json_string",
+                "json_object",
+                "unknown"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "tool_result": {
+          "type": "object",
+          "description": "Field mapping hints for normalizing tool results to standard_schema.content_blocks.tool_result.",
+          "properties": {
+            "id_path": {
+              "type": "string"
+            },
+            "name_path": {
+              "type": "string"
+            },
+            "response_path": {
+              "type": "string"
+            },
+            "output_path": {
+              "type": "string"
+            },
+            "error_path": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "json_object",
+                "unknown"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "source_model"
+      ],
+      "additionalProperties": false
+    },
+    "rate_limit_headers": {
+      "type": "object",
+      "description": "Provider-specific HTTP response headers that expose rate limit information.",
+      "properties": {
+        "requests_limit": {
+          "type": "string"
+        },
+        "requests_remaining": {
+          "type": "string"
+        },
+        "requests_reset": {
+          "type": "string"
+        },
+        "tokens_limit": {
+          "type": "string"
+        },
+        "tokens_remaining": {
+          "type": "string"
+        },
+        "tokens_reset": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "string",
+          "description": "Header indicating seconds until retry allowed, if provided by the API."
+        }
+      },
+      "additionalProperties": false
+    },
+    "retry_policy": {
+      "type": "object",
+      "description": "Provider-specific retry guidance that runtimes can apply consistently.",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "exponential_backoff"
+          ],
+          "description": "Retry strategy to apply for retryable errors."
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum number of retries (not counting the initial attempt)."
+        },
+        "min_delay_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum delay before the first retry."
+        },
+        "max_delay_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum delay cap for exponential backoff."
+        },
+        "jitter": {
+          "type": "string",
+          "enum": [
+            "none",
+            "full",
+            "equal"
+          ],
+          "description": "Optional jitter mode for backoff."
+        },
+        "retry_on_http_status": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "HTTP status codes that are considered retryable."
+        },
+        "retry_on_error_status": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Canonical provider error status strings considered retryable (e.g., RESOURCE_EXHAUSTED)."
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "strategy"
+      ],
+      "additionalProperties": false
+    },
+    "error_classification": {
+      "type": "object",
+      "description": "Provider-specific hints for mapping errors into standard_schema.error_handling.error_classes.",
+      "properties": {
+        "by_http_status": {
+          "type": "object",
+          "description": "Map HTTP status codes (as strings) to standard error_class ids. Values MUST be one of: invalid_request, authentication, permission_denied, not_found, quota_exhausted, rate_limited, request_too_large, timeout, conflict, cancelled, server_error, overloaded, other.",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "authentication",
+              "permission_denied",
+              "not_found",
+              "quota_exhausted",
+              "rate_limited",
+              "request_too_large",
+              "timeout",
+              "conflict",
+              "cancelled",
+              "server_error",
+              "overloaded",
+              "other"
+            ]
+          }
+        },
+        "by_error_status": {
+          "type": "object",
+          "description": "Map provider error status strings (e.g., Google canonical status) to standard error_class ids. Values MUST be one of: invalid_request, authentication, permission_denied, not_found, quota_exhausted, rate_limited, request_too_large, timeout, conflict, cancelled, server_error, overloaded, other.",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "authentication",
+              "permission_denied",
+              "not_found",
+              "quota_exhausted",
+              "rate_limited",
+              "request_too_large",
+              "timeout",
+              "conflict",
+              "cancelled",
+              "server_error",
+              "overloaded",
+              "other"
+            ]
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "protocol_version",
+    "endpoint",
+    "availability",
+    "capabilities"
+  ],
+  "additionalProperties": false
+}

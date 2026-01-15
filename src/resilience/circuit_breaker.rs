@@ -53,10 +53,18 @@ impl CircuitBreaker {
     }
 
     pub fn allow(&self) -> Result<()> {
-        let mut st = self.state.lock().map_err(|_| Error::runtime("CircuitBreaker poisoned"))?;
+        let mut st = self.state.lock().map_err(|_| {
+            Error::runtime_with_context(
+                "CircuitBreaker poisoned",
+                crate::ErrorContext::new().with_source("circuit_breaker"),
+            )
+        })?;
         if let Some(until) = st.open_until {
             if Instant::now() < until {
-                return Err(Error::Runtime("circuit breaker open".to_string()));
+                return Err(Error::runtime_with_context(
+                    "circuit breaker open",
+                    crate::ErrorContext::new().with_source("circuit_breaker"),
+                ));
             }
             // cooldown expired
             st.open_until = None;

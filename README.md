@@ -33,25 +33,98 @@ The library is organized into three layers:
 - **Client**: Unified client interface
 - **Types**: Standard type system based on AI-Protocol `standard_schema`
 
+## 🧩 Feature flags & re-exports
+
+`ai-lib-rust` keeps the runtime core small, and exposes optional higher-level helpers behind feature flags.
+
+For a deeper overview, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+- **Always available re-exports (crate root)**:
+  - `AiClient`, `AiClientBuilder`, `CancelHandle`, `CallStats`, `ChatBatchRequest`, `EndpointExt`
+  - `Message`, `MessageRole`, `StreamingEvent`, `ToolCall`
+  - `Result<T>`, `Error`, `ErrorContext`
+- **Feature-gated re-exports**:
+  - **`routing_mvp`**: pure logic model management helpers (`CustomModelManager`, `ModelArray`, etc.)
+  - **`interceptors`**: application-layer call hooks (`InterceptorPipeline`, `Interceptor`, `RequestContext`)
+
+Enable with:
+
+```toml
+[dependencies]
+ai-lib-rust = { version = "0.1", features = ["routing_mvp", "interceptors"] }
+```
+
+## 🗺️ Capability map (layered tools)
+
+This is a structured view of what the crate provides, grouped by layers.
+
+### 1) Protocol layer (`src/protocol/`)
+- **`ProtocolLoader`**: load provider manifests from local paths / env paths / GitHub raw URLs
+- **`ProtocolValidator`**: JSON Schema validation (supports offline via embedded schema)
+- **`ProtocolManifest`**: typed representation of provider manifests
+- **`UnifiedRequest`**: provider-agnostic request payload used by the runtime
+
+### 2) Transport layer (`src/transport/`)
+- **`HttpTransport`**: reqwest-based transport with proxy/timeout defaults and env knobs
+- **API key resolution**: keyring → `<PROVIDER_ID>_API_KEY` env
+
+### 3) Pipeline layer (`src/pipeline/`)
+- **Operator pipeline**: decoder → selector → accumulator → fanout → event mapper
+- **Streaming normalization**: maps provider frames to `StreamingEvent`
+
+### 4) Client layer (`src/client/`)
+- **`AiClient`**: runtime entry point; model-driven (`"provider/model"`)
+- **Chat builder**: `client.chat().messages(...).stream().execute_stream()`
+- **Batch**: `chat_batch`, `chat_batch_smart`
+- **Observability**: `call_model_with_stats` returns `CallStats`
+- **Cancellation**: `execute_stream_with_cancel()` → `CancelHandle`
+- **Services**: `EndpointExt` for calling `services` declared in protocol manifests
+
+### 5) Resilience layer (`src/resilience/` + `client/policy`)
+- **Policy engine**: capability validation + retry/fallback decisions
+- **Rate limiter**: token-bucket + adaptive header-driven mode
+- **Circuit breaker**: minimal breaker with env or builder defaults
+- **Backpressure**: max in-flight permit gating
+
+### 6) Types layer (`src/types/`)
+- **Messages**: `Message`, `MessageRole`, `MessageContent`, `ContentBlock`
+- **Tools**: `ToolDefinition`, `FunctionDefinition`, `ToolCall`
+- **Events**: `StreamingEvent`
+
+### 7) Telemetry layer (`src/telemetry/`)
+- **`FeedbackSink`** / **`FeedbackEvent`**: opt-in feedback reporting
+
+### 8) Utils (`src/utils/`)
+- JSONPath mapping helpers, tool-call assembler, and small runtime utilities
+
+### 9) Optional helpers (feature-gated)
+- **`routing_mvp`** (`src/routing/`): model selection + endpoint array load balancing (pure logic)
+- **`interceptors`** (`src/interceptors/`): hooks around calls for logging/metrics/audit
+
 ## 🚀 Quick Start
 
-### Basic Usage (developer-friendly facade)
+### Basic Usage
 
 ```rust
-use ai_lib_rust::prelude::*;
+use ai_lib_rust::{AiClient, Message};
+use ai_lib_rust::types::events::StreamingEvent;
 use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> ai_lib_rust::Result<()> {
-    // Create client for a specific model.
-    // Note: providers typically require an API key via env var, e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY.
-    let client = Provider::Anthropic.model("claude-3-5-sonnet").build_client().await?;
+    // Create client directly using provider/model string
+    // This is fully protocol-driven and supports any provider defined in ai-protocol manifests
+    let client = AiClient::new("anthropic/claude-3-5-sonnet").await?;
 
     let messages = vec![Message::user("Hello!")];
 
     // Streaming (unified events)
     let mut stream = client
-        .chat_completion_stream(ChatCompletionRequest::new(messages).temperature(0.7).stream())
+        .chat()
+        .messages(messages)
+        .temperature(0.7)
+        .stream()
+        .execute_stream()
         .await?;
 
     while let Some(event) = stream.next().await {
@@ -71,7 +144,8 @@ async fn main() -> ai_lib_rust::Result<()> {
 Multimodal inputs are represented as `MessageContent::Blocks(Vec<ContentBlock>)`.
 
 ```rust
-use ai_lib_rust::prelude::*;
+use ai_lib_rust::{Message, MessageRole};
+use ai_lib_rust::types::message::{MessageContent, ContentBlock};
 
 fn multimodal_message(image_path: &str) -> ai_lib_rust::Result<Message> {
     let blocks = vec![
@@ -89,7 +163,7 @@ fn multimodal_message(image_path: &str) -> ai_lib_rust::Result<Message> {
 
 - `AI_PROTOCOL_DIR` / `AI_PROTOCOL_PATH`: path to your local `ai-protocol` repo root (containing `v1/`)
 - `AI_LIB_ATTEMPT_TIMEOUT_MS`: per-attempt timeout guard used by the unified policy engine
-- `AI_LIB_DEFAULT_MODEL_<PROVIDER>`: optional default model name for `client_from_provider(Provider::X)`
+- `AI_LIB_BATCH_CONCURRENCY`: override concurrency limit for batch operations
 
 ### Custom Protocol
 
@@ -109,7 +183,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.2"
+ai-lib-rust = "0.1"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
@@ -123,13 +197,33 @@ The library automatically looks for protocol files in the following locations (i
 3. `../ai-protocol/` (sibling directory)
 4. `../../ai-protocol/` (parent's sibling)
 
-Protocol files should follow the AI-Protocol v1.1 specification structure.
+Protocol files should follow the AI-Protocol v1.5 specification structure. The runtime validates manifests against the official JSON Schema from the AI-Protocol repository.
 
 ## 🔐 Provider Requirements (API Keys)
 
-Most providers require an API key. The runtime reads keys from:
-- OS keyring (service: `ai-protocol`, username: provider id)
-- Environment variable: `<PROVIDER_ID>_API_KEY` (e.g. `DEEPSEEK_API_KEY`)
+Most providers require an API key. The runtime reads keys from (in order):
+
+1. **OS Keyring** (optional, convenience feature)
+   - **Windows**: Uses Windows Credential Manager
+   - **macOS**: Uses Keychain
+   - **Linux**: Uses Secret Service API
+   - Service: `ai-protocol`, Username: provider id
+   - **Note**: Keyring is optional and may not work in containers/WSL. Falls back to environment variables automatically.
+
+2. **Environment Variable** (recommended for production)
+   - Format: `<PROVIDER_ID>_API_KEY` (e.g. `DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`)
+   - **Recommended for**: CI/CD, containers, WSL, production deployments
+
+**Example**:
+```bash
+# Set API key via environment variable (recommended)
+export DEEPSEEK_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Or use keyring (optional, for local development)
+# Windows: Stored in Credential Manager
+# macOS: Stored in Keychain
+```
 
 Provider-specific details vary, but `ai-lib-rust` normalizes them behind a unified client API.
 
@@ -228,8 +322,12 @@ let loader = ProtocolLoader::new().with_hot_reload(true);
 
 See the `examples/` directory:
 
-- `basic_usage.rs`: Simple chat completion example
+- `basic_usage.rs`: Simple non-streaming chat completion
+- `deepseek_chat_stream.rs`: Streaming chat example
+- `deepseek_tool_call_stream.rs`: Tool calling with streaming
 - `custom_protocol.rs`: Loading custom protocol configurations
+- `list_models.rs`: Listing available models from provider
+- `service_discovery.rs`: Service discovery and custom service calls
 
 ## 🧪 Testing
 
@@ -242,18 +340,14 @@ cargo test
 For batch execution (order-preserving), use:
 
 ```rust
-use ai_lib_rust::{ChatBatchRequest, Message, MessageRole};
-use ai_lib_rust::types::message::MessageContent;
+use ai_lib_rust::{AiClient, ChatBatchRequest, Message};
+
+let client = AiClient::new("deepseek/deepseek-chat").await?;
 
 let reqs = vec![
-    ChatBatchRequest::new(vec![Message {
-        role: MessageRole::User,
-        content: MessageContent::Text("Hello".to_string()),
-    }]),
-    ChatBatchRequest::new(vec![Message {
-        role: MessageRole::User,
-        content: MessageContent::Text("Explain SSE in one sentence".to_string()),
-    }]).temperature(0.2),
+    ChatBatchRequest::new(vec![Message::user("Hello")]),
+    ChatBatchRequest::new(vec![Message::user("Explain SSE in one sentence")])
+        .temperature(0.2),
 ];
 
 let results = client.chat_batch(reqs, Some(5)).await;
@@ -274,9 +368,10 @@ Override concurrency with:
 
 Contributions are welcome! Please ensure that:
 
-1. All protocol configurations follow the AI-Protocol v1.1 specification
+1. All protocol configurations follow the AI-Protocol v1.5 specification
 2. New operators are properly documented
 3. Tests are included for new features
+4. Code follows Rust best practices and passes `cargo clippy`
 
 ## 📄 License
 
@@ -289,8 +384,7 @@ at your option.
 
 ## 🔗 Related Projects
 
-- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): Protocol specification
-- [ai-lib](https://github.com/hiddenpath/ai-lib): Original Rust implementation (being migrated)
+- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): Protocol specification (v1.5)
 
 ---
 

@@ -15,9 +15,29 @@ pub struct HttpTransport {
 }
 
 impl HttpTransport {
+    /// Create a new HttpTransport from a manifest.
+    ///
+    /// If `base_url_override` is provided, it will be used instead of the manifest's base_url.
+    /// This is useful for testing with mock servers.
     pub fn new(manifest: &ProtocolManifest, model: &str) -> Result<Self> {
+        Self::new_with_base_url(manifest, model, None)
+    }
+
+    /// Create a new HttpTransport with an optional base_url override.
+    ///
+    /// This is primarily for testing, allowing injection of mock server URLs.
+    pub fn new_with_base_url(
+        manifest: &ProtocolManifest,
+        model: &str,
+        base_url_override: Option<&str>,
+    ) -> Result<Self> {
         let provider_id = manifest.provider_id.as_deref().unwrap_or(&manifest.id);
         let api_key = Self::get_api_key(provider_id);
+
+        // Use override if provided, otherwise use manifest endpoint.base_url
+        let base_url = base_url_override
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| manifest.get_base_url().to_string());
 
         // Minimal production-friendly defaults (env-overridable).
         let timeout_secs = env::var("AI_HTTP_TIMEOUT_SECS")
@@ -58,7 +78,7 @@ impl HttpTransport {
 
         Ok(Self {
             client,
-            base_url: manifest.base_url.clone(),
+            base_url,
             model: model.to_string(),
             api_key,
         })

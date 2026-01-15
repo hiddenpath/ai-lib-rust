@@ -1,4 +1,5 @@
-use ai_lib_rust::prelude::*;
+use ai_lib_rust::{AiClient, Message, MessageRole};
+use ai_lib_rust::types::message::{MessageContent, ContentBlock};
 use ai_lib_rust::protocol::UnifiedRequest;
 
 fn fake_b64() -> String {

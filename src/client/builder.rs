@@ -16,6 +16,8 @@ pub struct AiClientBuilder {
     max_inflight: Option<usize>,
     breaker: Option<Arc<crate::resilience::circuit_breaker::CircuitBreaker>>,
     rate_limiter: Option<Arc<crate::resilience::rate_limiter::RateLimiter>>,
+    /// Override base URL (primarily for testing with mock servers)
+    base_url_override: Option<String>,
 }
 
 impl AiClientBuilder {
@@ -29,6 +31,7 @@ impl AiClientBuilder {
             max_inflight: None,
             breaker: None,
             rate_limiter: None,
+            base_url_override: None,
         }
     }
 
@@ -109,6 +112,15 @@ impl AiClientBuilder {
         self
     }
 
+    /// Override the base URL from the protocol manifest.
+    ///
+    /// This is primarily for testing with mock servers. In production, use the
+    /// base_url defined in the protocol manifest.
+    pub fn base_url_override(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url_override = Some(base_url.into());
+        self
+    }
+
     /// Build the client.
     pub async fn build(self, model: &str) -> Result<AiClient> {
         let mut loader = ProtocolLoader::new();
@@ -131,9 +143,15 @@ impl AiClientBuilder {
         let manifest = loader.load_model(model).await?;
         let strict_streaming = self.strict_streaming
             || std::env::var("AI_LIB_STRICT_STREAMING").ok().as_deref() == Some("1");
-        AiClient::validate_manifest(&manifest, strict_streaming)?;
+        crate::client::validation::validate_manifest(&manifest, strict_streaming)?;
 
-        let transport = Arc::new(crate::transport::HttpTransport::new(&manifest, &model_id)?);
+        let transport = Arc::new(
+            crate::transport::HttpTransport::new_with_base_url(
+                &manifest,
+                &model_id,
+                self.base_url_override.as_deref(),
+            )?,
+        );
         let pipeline = Arc::new(crate::pipeline::Pipeline::from_manifest(&manifest)?);
 
         let max_inflight = self.max_inflight.or_else(|| {

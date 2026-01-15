@@ -22,9 +22,11 @@ async fn test_sse_streaming_response() {
         )
         .await;
 
-    // Note: This test requires modifying the client to use the mock server URL
-    // For now, this is a structure for future implementation
-    // We'd need to inject the base_url into the client or use a test transport
+    // Create a test client with base_url override
+    // Note: This requires a valid model identifier like "openai/gpt-4"
+    // For now, we'll skip the actual request to avoid protocol loading issues
+    // let client = fixture.create_test_client("openai/gpt-4").await.unwrap();
+    // TODO: Implement actual streaming test once protocol manifests are available
 }
 
 #[tokio::test]

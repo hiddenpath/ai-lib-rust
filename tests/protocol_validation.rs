@@ -1,7 +1,6 @@
 //! Tests for protocol validation against JSON Schema
 
-use ai_lib_rust::protocol::{ProtocolError, ProtocolLoader, ProtocolManifest};
-use serde_yaml::Value;
+use ai_lib_rust::protocol::{ProtocolError, ProtocolLoader};
 
 #[tokio::test]
 async fn test_valid_provider_manifest() {
@@ -24,11 +23,11 @@ async fn test_invalid_yaml_structure() {
         .unwrap_or_else(|_| "D:\\ai-protocol".to_string());
     std::env::set_var("AI_PROTOCOL_DIR", &protocol_dir);
 
-    let loader = ProtocolLoader::new().with_base_path(&protocol_dir);
-
     // Create a temporary invalid manifest file
     let temp_dir = std::env::temp_dir();
-    let temp_file = temp_dir.join("invalid_provider.yaml");
+    let providers_dir = temp_dir.join("v1").join("providers");
+    std::fs::create_dir_all(&providers_dir).unwrap();
+    let temp_file = providers_dir.join("invalid_provider.yaml");
 
     // Write invalid YAML (missing required fields)
     std::fs::write(
@@ -59,7 +58,9 @@ id: test-provider
 #[tokio::test]
 async fn test_missing_required_fields() {
     let temp_dir = std::env::temp_dir();
-    let temp_file = temp_dir.join("incomplete_provider.yaml");
+    let providers_dir = temp_dir.join("v1").join("providers");
+    std::fs::create_dir_all(&providers_dir).unwrap();
+    let temp_file = providers_dir.join("incomplete_provider.yaml");
 
     // Write manifest missing required fields
     std::fs::write(

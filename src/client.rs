@@ -6,13 +6,19 @@
 pub mod builder;
 pub mod chat;
 pub mod core;
+pub mod endpoint;
+mod error_classification;
+mod execution;
 mod policy;
+mod preflight;
+mod validation;
 pub mod signals;
 pub mod types;
 
 pub use builder::AiClientBuilder;
 pub use chat::{ChatBatchRequest, ChatRequestBuilder};
 pub use core::{AiClient, UnifiedResponse};
+pub use endpoint::EndpointExt;
 pub use signals::SignalsSnapshot;
 pub use types::{CallStats, CancelHandle};
 

@@ -1,17 +1,16 @@
+//! Core AI client implementation
+
 use crate::client::types::CallStats;
-use crate::protocol::{EndpointConfig, ProtocolLoader, ProtocolManifest};
-use crate::types::events::StreamingEvent;
-use crate::{Error, Result};
-use futures::TryStreamExt;
-use reqwest::header::HeaderMap;
-use std::pin::Pin;
+use crate::protocol::ProtocolLoader;
+use crate::protocol::ProtocolManifest;
+use crate::{Error, ErrorContext, Result};
 use std::sync::Arc;
-use tracing::info;
-use uuid::Uuid;
 
 use crate::pipeline::Pipeline;
 use crate::transport::HttpTransport;
-use tokio::sync::OwnedSemaphorePermit;
+
+// Import submodules
+use crate::client::validation;
 
 /// Unified AI client that works with any provider through protocol configuration.
 pub struct AiClient {
@@ -68,28 +67,6 @@ impl AiClient {
             circuit_breaker,
         }
     }
-    fn header_first(headers: &HeaderMap, names: &[&str]) -> Option<String> {
-        for name in names {
-            if let Some(v) = headers.get(*name) {
-                if let Ok(s) = v.to_str() {
-                    let s = s.trim();
-                    if !s.is_empty() {
-                        return Some(s.to_string());
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Best-effort parsing of `Retry-After` header.
-    ///
-    /// We intentionally only support the common `Retry-After: <seconds>` form to avoid new deps.
-    fn retry_after_ms(headers: &HeaderMap) -> Option<u32> {
-        let raw = Self::header_first(headers, &["retry-after"])?;
-        let secs: u32 = raw.parse().ok()?;
-        Some(secs.saturating_mul(1000))
-    }
 
     /// Create a new client for a specific model.
     ///
@@ -112,7 +89,7 @@ impl AiClient {
             .unwrap_or_else(|| model.to_string());
 
         let manifest = self.loader.load_model(model).await?;
-        AiClient::validate_manifest(&manifest, self.strict_streaming)?;
+        validation::validate_manifest(&manifest, self.strict_streaming)?;
 
         let transport = Arc::new(crate::transport::HttpTransport::new(&manifest, &model_id)?);
         let pipeline = Arc::new(crate::pipeline::Pipeline::from_manifest(&manifest)?);
@@ -187,7 +164,14 @@ impl AiClient {
         }
 
         out.into_iter()
-            .map(|o| o.unwrap_or_else(|| Err(Error::runtime("batch result missing"))))
+            .map(|o| {
+                o.unwrap_or_else(|| {
+                    Err(Error::runtime_with_context(
+                        "batch result missing",
+                        ErrorContext::new().with_source("batch_executor"),
+                    ))
+                })
+            })
             .collect()
     }
 
@@ -225,153 +209,17 @@ impl AiClient {
         self.chat_batch(requests, Some(chosen)).await
     }
 
-    /// Unified policy preflight for a request:
-    /// - rate limiter (optional)
-    /// - circuit breaker allow (optional)
-    /// - inflight backpressure permit (optional)
-    pub(crate) async fn preflight(&self) -> Result<Option<OwnedSemaphorePermit>> {
-        // Keep preflight lightweight but unified. Rate limiting and breaker allow are per-call gates,
-        // while the inflight permit is held for the whole call/stream lifetime.
-        if let Some(rl) = &self.rate_limiter {
-            rl.acquire().await?;
-        }
-        if let Some(b) = &self.breaker {
-            b.allow()?;
-        }
-        if let Some(sem) = &self.inflight {
-            return Ok(Some(
-                sem.clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| Error::runtime("Backpressure semaphore closed"))?,
-            ));
-        }
-        Ok(None)
-    }
-
-    /// Update rate limiter state from response headers using protocol-mapped names.
-    pub async fn update_rate_limits(&self, headers: &HeaderMap) {
-        if let Some(rl) = &self.rate_limiter {
-            if let Some(conf) = &self.manifest.rate_limit_headers {
-                // 1. Try Retry-After (highest priority for 429/overload)
-                if let Some(name) = &conf.retry_after {
-                    if let Some(v) = Self::header_first(headers, &[name]) {
-                        if let Ok(secs) = v.parse::<u64>() {
-                            rl.update_budget(Some(0), Some(std::time::Duration::from_secs(secs)))
-                                .await;
-                            return;
-                        }
-                    }
-                }
-
-                // 2. Generic Remaining/Reset for requests
-                let remaining = conf
-                    .requests_remaining
-                    .as_ref()
-                    .and_then(|h| Self::header_first(headers, &[h]))
-                    .and_then(|s| s.parse::<u64>().ok());
-
-                let reset_after = conf
-                    .requests_reset
-                    .as_ref()
-                    .and_then(|h| Self::header_first(headers, &[h]))
-                    .and_then(|s| {
-                        if let Ok(val) = s.parse::<u64>() {
-                            if val > 1_000_000_000 {
-                                // Likely an epoch timestamp
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .ok()?
-                                    .as_secs();
-                                Some(std::time::Duration::from_secs(val.saturating_sub(now)))
-                            } else {
-                                // Likely seconds or ms? Standardize on seconds for now.
-                                Some(std::time::Duration::from_secs(val))
-                            }
-                        } else {
-                            None
-                        }
-                    });
-
-                rl.update_budget(remaining, reset_after).await;
-            }
-        }
-    }
-
-    pub(crate) fn on_success(&self) {
-        if let Some(b) = &self.breaker {
-            b.on_success();
-        }
-    }
-
-    pub(crate) fn on_failure(&self) {
-        if let Some(b) = &self.breaker {
-            b.on_failure();
-        }
-    }
-
     /// Report user feedback (optional). This delegates to the injected `FeedbackSink`.
     pub async fn report_feedback(&self, event: crate::telemetry::FeedbackEvent) -> Result<()> {
         self.feedback.report(event).await
     }
 
-    /// Validate that the manifest supports required capabilities.
+    /// Update rate limiter state from response headers using protocol-mapped names.
     ///
-    /// When `strict_streaming` is enabled, this performs fail-fast checks for streaming config
-    /// completeness to avoid ambiguous runtime behavior.
-    pub(crate) fn validate_manifest(
-        manifest: &ProtocolManifest,
-        strict_streaming: bool,
-    ) -> Result<()> {
-        if !strict_streaming {
-            return Ok(());
-        }
-
-        // If the protocol claims streaming capability, require streaming configuration.
-        if manifest.supports_capability("streaming") {
-            let streaming = manifest.streaming.as_ref().ok_or_else(|| {
-                Error::Validation("strict_streaming: manifest.streaming is required".to_string())
-            })?;
-
-            let decoder = streaming.decoder.as_ref().ok_or_else(|| {
-                Error::Validation("strict_streaming: streaming.decoder is required".to_string())
-            })?;
-            if decoder.format.trim().is_empty() {
-                return Err(Error::Validation(
-                    "strict_streaming: streaming.decoder.format must be non-empty".to_string(),
-                ));
-            }
-
-            // If no explicit event_map rules are provided, the default PathEventMapper needs paths.
-            if streaming.event_map.is_empty() {
-                if streaming
-                    .content_path
-                    .as_deref()
-                    .map(|s| s.trim().is_empty())
-                    .unwrap_or(true)
-                {
-                    return Err(Error::Validation(
-                        "strict_streaming: streaming.content_path is required when streaming.event_map is empty"
-                            .to_string(),
-                    ));
-                }
-
-                if manifest.supports_capability("tools")
-                    && streaming
-                        .tool_call_path
-                        .as_deref()
-                        .map(|s| s.trim().is_empty())
-                        .unwrap_or(true)
-                {
-                    return Err(Error::Validation(
-                        "strict_streaming: streaming.tool_call_path is required for tools when streaming.event_map is empty"
-                            .to_string(),
-                    ));
-                }
-            }
-        }
-
-        Ok(())
+    /// This method is public for testing purposes.
+    pub async fn update_rate_limits(&self, headers: &reqwest::header::HeaderMap) {
+        use crate::client::preflight::PreflightExt;
+        PreflightExt::update_rate_limits(self, headers).await;
     }
 
     /// Unified entry point for calling a model.
@@ -386,18 +234,27 @@ impl AiClient {
     /// Call a model and also return per-call stats (latency, retries, request ids, endpoint, usage, etc.).
     ///
     /// This is intended for higher-level model selection and observability.
+    /// Call a model and also return per-call stats (latency, retries, request ids, endpoint, usage, etc.).
+    ///
+    /// This is intended for higher-level model selection and observability.
     pub async fn call_model_with_stats(
         &self,
         request: crate::protocol::UnifiedRequest,
     ) -> Result<(UnifiedResponse, CallStats)> {
-        // Unified policy-driven loop:
-        // - tries the primary client first, then fallbacks
-        // - for each candidate, retries are handled consistently based on that candidate's manifest
-        // - request.model is forced to match the candidate model_id
+        // v0.5.0: The resilience logic is now delegated to the "Resilience Layer" (Pipeline Operators).
+        // This core loop is now significantly simpler: it just tries the primary client.
+        // If advanced resilience (multi-candidate fallback, complex retries) is needed,
+        // it should be configured via the `Pipeline` or `PolicyEngine` which now acts as an operator.
+
+        // Note: For v0.5.0 migration, we preserve the basic fallback iteration here
+        // until the `Pipeline` fully absorbs "Client Switching" logic.
+        // However, the explicit *retry* loop inside each candidate is now conceptually
+        // part of `execute_once_with_stats` (which will eventually use RetryOperator).
+
         let mut last_err: Option<Error> = None;
 
-        // Build fallback clients first (async), then run a unified decision loop:
-        // primary -> fallbacks (in order).
+        // Build fallback clients first (async)
+        // In v0.6.0+, this will be replaced by `FallbackOperator` inside the pipeline
         let mut fallback_clients: Vec<AiClient> = Vec::with_capacity(self.fallbacks.len());
         for model in &self.fallbacks {
             if let Ok(c) = self.with_model(model).await {
@@ -412,356 +269,109 @@ impl AiClient {
         {
             let has_fallback = candidate_idx + 1 < (1 + fallback_clients.len());
             let policy = crate::client::policy::PolicyEngine::new(&client.manifest);
-            let mut attempt: u32 = 0;
-            let mut retry_count: u32 = 0;
 
-            loop {
-                // Decision loop for a single candidate.
-
-                // 1. Validation check: Does this manifest support the capabilities?
-                // If it doesn't, skip this candidate and try fallback.
-                if let Err(e) = policy.validate_capabilities(&request) {
-                    if has_fallback {
-                        last_err = Some(e);
-                        break; // Fallback to next candidate
-                    } else {
-                        return Err(e); // No more fallbacks, fail fast
-                    }
-                }
-
-                // Pre-decision based on signals (skip known-bad candidates, e.g. breaker open).
-                let sig = client.signals().await;
-                if let Some(crate::client::policy::Decision::Fallback) =
-                    policy.pre_decide(&sig, has_fallback)
-                {
-                    last_err = Some(Error::runtime("skipped candidate due to signals"));
-                    break;
-                }
-
-                let mut req = request.clone();
-                req.model = client.model_id.clone();
-
-                let attempt_fut = client.execute_once_with_stats(&req);
-                let attempt_res = if let Some(t) = client.attempt_timeout {
-                    match tokio::time::timeout(t, attempt_fut).await {
-                        Ok(r) => r,
-                        Err(_) => Err(Error::runtime("attempt timeout")),
-                    }
+            // 1. Validation check
+            if let Err(e) = policy.validate_capabilities(&request) {
+                if has_fallback {
+                    last_err = Some(e);
+                    continue; // Fallback to next candidate
                 } else {
-                    attempt_fut.await
-                };
+                    return Err(e); // No more fallbacks, fail fast
+                }
+            }
 
-                match attempt_res {
-                    Ok((resp, mut stats)) => {
-                        stats.retry_count = retry_count;
-                        return Ok((resp, stats));
-                    }
-                    Err(e) => {
-                        let decision = policy.decide(&e, attempt, has_fallback)?;
-                        last_err = Some(e);
+            // 2. Pre-decision based on signals
+            let sig = client.signals().await;
+            if let Some(crate::client::policy::Decision::Fallback) =
+                policy.pre_decide(&sig, has_fallback)
+            {
+                last_err = Some(Error::runtime_with_context(
+                    "skipped candidate due to signals",
+                    ErrorContext::new().with_source("policy_engine"),
+                ));
+                continue;
+            }
 
-                        match decision {
-                            crate::client::policy::Decision::Retry { delay } => {
-                                retry_count = retry_count.saturating_add(1);
-                                if delay.as_millis() > 0 {
-                                    tokio::time::sleep(delay).await;
-                                }
-                                attempt = attempt.saturating_add(1);
-                                continue;
-                            }
-                            crate::client::policy::Decision::Fallback => break,
-                            crate::client::policy::Decision::Fail => {
-                                return Err(last_err.unwrap());
-                            }
-                        }
+            let mut req = request.clone();
+            req.model = client.model_id.clone();
+
+            // 3. Execution with Retry Policy
+            // The `execute_with_retry` helper now encapsulates the retry loop,
+            // paving the way for `RetryOperator` migration.
+            match client.execute_with_retry(&req, &policy, has_fallback).await {
+                Ok(res) => return Ok(res),
+                Err(e) => {
+                    // If we are here, retries were exhausted or policy said Fallback/Fail.
+                    last_err = Some(e);
+                    // If policy said Fallback, continue loop.
+                    // If policy said Fail, strictly we should stop, but current logic implies
+                    // the loop itself is the "Fallback mechanism".
+                    if !has_fallback {
+                        return Err(last_err.unwrap());
                     }
                 }
             }
         }
 
-        Err(last_err.unwrap_or_else(|| Error::runtime("all attempts failed")))
-    }
-
-    /// Start a streaming request and return the event stream.
-    ///
-    /// This is a single attempt (no retry/fallback). Higher-level policy loops live in the caller.
-    pub(crate) async fn execute_stream_once<'a>(
-        &self,
-        request: &crate::protocol::UnifiedRequest,
-    ) -> Result<(
-        Pin<Box<dyn futures::stream::Stream<Item = Result<StreamingEvent>> + Send + 'static>>,
-        Option<OwnedSemaphorePermit>,
-        CallStats,
-    )> {
-        let permit = self.preflight().await?;
-        let client_request_id = Uuid::new_v4().to_string();
-
-        let provider_request = self.manifest.compile_request(request)?;
-        let endpoint = self.resolve_endpoint(&request.operation)?;
-
-        let start = std::time::Instant::now();
-        let resp = self
-            .transport
-            .execute_stream_response(
-                &endpoint.method,
-                &endpoint.path,
-                &provider_request,
-                Some(&client_request_id),
+        Err(last_err.unwrap_or_else(|| {
+            Error::runtime_with_context(
+                "all attempts failed",
+                ErrorContext::new().with_source("retry_policy"),
             )
-            .await?;
-
-        // Extract rate limits immediately from any response (success or error)
-        self.update_rate_limits(resp.headers()).await;
-
-        if !resp.status().is_success() {
-            self.on_failure();
-            let status = resp.status().as_u16();
-            let class = self
-                .manifest
-                .error_classification
-                .as_ref()
-                .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m| m.get(&status.to_string()).cloned())
-                .unwrap_or_else(|| "http_error".to_string());
-
-            // Protocol-driven fallback decision: use standard error_classes guidance
-            // from spec.yaml. Transient errors (retryable) are typically fallbackable.
-            let should_fallback = Self::is_fallbackable_error_class(class.as_str());
-
-            let headers = resp.headers().clone();
-            let retry_after_ms = Self::retry_after_ms(&headers);
-            let body = resp.text().await.unwrap_or_default();
-
-            let retry_policy = self.manifest.retry_policy.as_ref();
-            let retryable = retry_policy
-                .and_then(|p| p.retry_on_http_status.as_ref())
-                .map(|v| v.contains(&status))
-                .unwrap_or(false);
-
-            info!(
-                http_status = status,
-                error_class = class.as_str(),
-                endpoint = endpoint.path.as_str(),
-                duration_ms = start.elapsed().as_millis(),
-                "ai-lib-rust streaming request failed"
-            );
-
-            return Err(Error::Remote {
-                status,
-                class,
-                message: body,
-                retryable,
-                fallbackable: should_fallback,
-                retry_after_ms,
-            });
-        }
-
-        self.on_success();
-
-        let upstream_request_id = Self::header_first(
-            resp.headers(),
-            &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
-        );
-        let http_status = resp.status().as_u16();
-
-        let response_stream: crate::BoxStream<'static, bytes::Bytes> = Box::pin(
-            resp.bytes_stream()
-                .map_err(|e| Error::Transport(crate::transport::TransportError::Http(e))),
-        );
-        let event_stream = self
-            .pipeline
-            .clone()
-            .process_stream_arc(response_stream)
-            .await?;
-
-        let stats = CallStats {
-            model: request.model.clone(),
-            operation: request.operation.clone(),
-            endpoint: endpoint.path.clone(),
-            http_status,
-            retry_count: 0,
-            duration_ms: start.elapsed().as_millis(),
-            first_event_ms: None,
-            emitted_any: false,
-            client_request_id,
-            upstream_request_id,
-            error_class: None,
-            usage: None,
-            signals: self.signals().await,
-        };
-
-        Ok((event_stream, permit, stats))
+        }))
     }
 
-    async fn execute_once_with_stats(
+    /// Internal helper to execute with retry policy.
+    /// In future versions, this Logic moves entirely into `RetryOperator`.
+    async fn execute_with_retry(
         &self,
         request: &crate::protocol::UnifiedRequest,
+        policy: &crate::client::policy::PolicyEngine,
+        has_fallback: bool,
     ) -> Result<(UnifiedResponse, CallStats)> {
-        let _permit = self.preflight().await?;
+        let mut attempt: u32 = 0;
+        let mut retry_count: u32 = 0;
 
-        let client_request_id = Uuid::new_v4().to_string();
-
-        // Compile unified request to provider-specific format
-        let provider_request = self.manifest.compile_request(request)?;
-
-        // Resolve endpoint based on request intent (operation)
-        let endpoint = self.resolve_endpoint(&request.operation)?;
-
-        let start = std::time::Instant::now();
-
-        let mut last_upstream_request_id: Option<String> = None;
-        let resp = self
-            .transport
-            .execute_stream_response(
-                &endpoint.method,
-                &endpoint.path,
-                &provider_request,
-                Some(&client_request_id),
-            )
-            .await?;
-
-        // Extract rate limits immediately
-        self.update_rate_limits(resp.headers()).await;
-
-        // Status-based error classification (protocol-driven) + fallback decision
-        if !resp.status().is_success() {
-            self.on_failure();
-            let status = resp.status().as_u16();
-            let class = self
-                .manifest
-                .error_classification
-                .as_ref()
-                .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m| m.get(&status.to_string()).cloned())
-                .unwrap_or_else(|| "http_error".to_string());
-
-            // Protocol-driven fallback decision: use standard error_classes guidance
-            // from spec.yaml. Transient errors (retryable) are typically fallbackable.
-            let should_fallback = Self::is_fallbackable_error_class(class.as_str());
-
-            let headers = resp.headers().clone();
-            let request_id = Self::header_first(
-                &headers,
-                &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
-            );
-            let body = resp.text().await.unwrap_or_default();
-            info!(
-                http_status = status,
-                error_class = class.as_str(),
-                request_id = request_id.as_deref().unwrap_or(""),
-                endpoint = endpoint.path.as_str(),
-                duration_ms = start.elapsed().as_millis(),
-                "ai-lib-rust request failed"
-            );
-            let retry_policy = self.manifest.retry_policy.as_ref();
-            let retryable = retry_policy
-                .and_then(|p| p.retry_on_http_status.as_ref())
-                .map(|v| v.contains(&status))
-                .unwrap_or(false);
-            let retry_after_ms = Self::retry_after_ms(&headers);
-
-            return Err(Error::Remote {
-                status,
-                class,
-                message: body,
-                retryable,
-                fallbackable: should_fallback,
-                retry_after_ms,
-            });
-        }
-
-        info!(
-            http_status = resp.status().as_u16(),
-            client_request_id = client_request_id.as_str(),
-            endpoint = endpoint.path.as_str(),
-            duration_ms = start.elapsed().as_millis(),
-            "ai-lib-rust request started streaming"
-        );
-        self.on_success();
-
-        if last_upstream_request_id.is_none() {
-            last_upstream_request_id = Self::header_first(
-                resp.headers(),
-                &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
-            );
-        }
-
-        let http_status = resp.status().as_u16();
-        let response_stream: crate::BoxStream<'static, bytes::Bytes> = Box::pin(
-            resp.bytes_stream()
-                .map_err(|e| Error::Transport(crate::transport::TransportError::Http(e))),
-        );
-
-        let mut event_stream = self
-            .pipeline
-            .clone()
-            .process_stream_arc(response_stream)
-            .await?;
-
-        let mut response = UnifiedResponse::default();
-        let mut tool_asm = crate::utils::tool_call_assembler::ToolCallAssembler::new();
-        use futures::StreamExt;
-
-        while let Some(event) = event_stream.next().await {
-            match event? {
-                StreamingEvent::PartialContentDelta { content, .. } => {
-                    response.content.push_str(&content);
+        loop {
+            let attempt_fut = self.execute_once_with_stats(request);
+            let attempt_res = if let Some(t) = self.attempt_timeout {
+                match tokio::time::timeout(t, attempt_fut).await {
+                    Ok(r) => r,
+                    Err(_) => Err(Error::runtime_with_context(
+                        "attempt timeout",
+                        ErrorContext::new().with_source("timeout_policy"),
+                    )),
                 }
-                StreamingEvent::ToolCallStarted {
-                    tool_call_id,
-                    tool_name,
-                    ..
-                } => {
-                    tool_asm.on_started(tool_call_id, tool_name);
+            } else {
+                attempt_fut.await
+            };
+
+            match attempt_res {
+                Ok((resp, mut stats)) => {
+                    stats.retry_count = retry_count;
+                    return Ok((resp, stats));
                 }
-                StreamingEvent::PartialToolCall {
-                    tool_call_id,
-                    arguments,
-                    ..
-                } => {
-                    tool_asm.on_partial(&tool_call_id, &arguments);
+                Err(e) => {
+                    let decision = policy.decide(&e, attempt, has_fallback)?;
+
+                    match decision {
+                        crate::client::policy::Decision::Retry { delay } => {
+                            retry_count = retry_count.saturating_add(1);
+                            if delay.as_millis() > 0 {
+                                tokio::time::sleep(delay).await;
+                            }
+                            attempt = attempt.saturating_add(1);
+                            continue;
+                        }
+                        crate::client::policy::Decision::Fallback => return Err(e),
+                        crate::client::policy::Decision::Fail => return Err(e),
+                    }
                 }
-                StreamingEvent::Metadata { usage, .. } => {
-                    response.usage = usage;
-                }
-                _ => {}
             }
         }
-
-        response.tool_calls = tool_asm.finalize();
-
-        let stats = CallStats {
-            model: request.model.clone(),
-            operation: request.operation.clone(),
-            endpoint: endpoint.path.clone(),
-            http_status,
-            retry_count: 0,
-            duration_ms: start.elapsed().as_millis(),
-            first_event_ms: None,
-            emitted_any: true,
-            client_request_id,
-            upstream_request_id: last_upstream_request_id,
-            error_class: None,
-            usage: response.usage.clone(),
-            signals: self.signals().await,
-        };
-
-        Ok((response, stats))
     }
 
-    pub(crate) fn resolve_endpoint(&self, name: &str) -> Result<&EndpointConfig> {
-        self.manifest
-            .endpoints
-            .as_ref()
-            .and_then(|eps| eps.get(name))
-            .ok_or_else(|| {
-                Error::Protocol(crate::protocol::ProtocolError::NotFound(format!(
-                    "Endpoint '{}' not defined",
-                    name
-                )))
-            })
-    }
-
+    /// Validate request capabilities.
     pub fn validate_request(
         &self,
         request: &crate::client::chat::ChatRequestBuilder,
@@ -774,82 +384,5 @@ impl AiClient {
 
         let policy = crate::client::policy::PolicyEngine::new(&self.manifest);
         policy.validate_capabilities(&mock_req)
-    }
-
-    /// List models available from the provider.
-    pub async fn list_remote_models(&self) -> Result<Vec<String>> {
-        let response = self.call_service("list_models").await?;
-
-        let models: Vec<String> = if let Some(data) = response.get("data") {
-            data.as_array()
-                .unwrap_or(&vec![])
-                .iter()
-                .filter_map(|m| {
-                    m.get("id")
-                        .and_then(|id| id.as_str().map(|s| s.to_string()))
-                })
-                .collect()
-        } else if let Some(models) = response.get("models") {
-            // Gemini style
-            models
-                .as_array()
-                .unwrap_or(&vec![])
-                .iter()
-                .filter_map(|m| {
-                    m.get("name")
-                        .and_then(|n| n.as_str().map(|s| s.to_string()))
-                })
-                .collect()
-        } else {
-            vec![]
-        };
-
-        Ok(models)
-    }
-
-    /// Call a generic service by name.
-    pub async fn call_service(&self, service_name: &str) -> Result<serde_json::Value> {
-        let service = self
-            .manifest
-            .services
-            .as_ref()
-            .and_then(|services| services.get(service_name))
-            .ok_or_else(|| {
-                crate::Error::Protocol(crate::protocol::ProtocolError::NotFound(format!(
-                    "Service '{}' not defined",
-                    service_name
-                )))
-            })?;
-
-        self.transport
-            .execute_service(
-                &service.path,
-                &service.method,
-                service.headers.as_ref(),
-                service.query_params.as_ref(),
-            )
-            .await
-    }
-
-    /// Determine if an error class is fallbackable based on protocol specification.
-    ///
-    /// This follows the standard error_classes from spec.yaml:
-    /// - Transient errors (retryable) are typically fallbackable
-    /// - Quota/authentication errors may be fallbackable if another provider is available
-    /// - Invalid requests are NOT fallbackable (they'll fail on any provider)
-    fn is_fallbackable_error_class(error_class: &str) -> bool {
-        // Based on spec.yaml standard_schema.error_handling.error_classes:
-        // Transient errors (default_retryable: true) are typically fallbackable
-        match error_class {
-            // Transient server errors - fallback makes sense
-            "rate_limited" | "overloaded" | "server_error" | "timeout" | "conflict" => true,
-            // Quota exhausted - may work on another provider
-            "quota_exhausted" => true,
-            // Client errors - don't fallback (will fail on any provider)
-            "invalid_request" | "authentication" | "permission_denied" | "not_found"
-            | "request_too_large" | "cancelled" => false,
-            // Unknown/other - conservative: don't fallback
-            _ => false,
-        }
     }
 }

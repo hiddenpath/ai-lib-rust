@@ -20,8 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loaded protocol: {}", manifest.id);
     println!("Protocol version: {}", manifest.protocol_version);
-    println!("Base URL: {}", manifest.base_url);
-    println!("Capabilities: {:?}", manifest.capabilities);
+    println!("Base URL: {}", manifest.endpoint.base_url);
+    println!("Capabilities: streaming={}, tools={}, vision={}", 
+             manifest.capabilities.streaming, 
+             manifest.capabilities.tools, 
+             manifest.capabilities.vision);
 
     // The manifest can now be used to create a client or process requests
     // This demonstrates the protocol-driven architecture where all logic
