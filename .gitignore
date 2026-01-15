@@ -11,6 +11,23 @@
 *.log
 build_error.log
 
+# Work / internal documents (do not publish)
+*REPORT*.md
+*REPORT*.txt
+*SUMMARY*.md
+*SUMMARY*.txt
+*PLAN*.md
+*PLAN*.txt
+*ANALYSIS*.md
+*ANALYSIS*.txt
+*REVIEW*.md
+*REVIEW*.txt
+*AUDIT*.md
+*AUDIT*.txt
+*BACKLOG*.md
+docs/AUDIT_REPORTS/
+docs/design/
+
 # IDE and editor files
 .idea/
 .vscode/
