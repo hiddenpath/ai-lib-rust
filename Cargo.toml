@@ -1,0 +1,85 @@
+[package]
+name = "ai-lib-rust"
+version = "0.2.0"
+edition = "2021"
+authors = ["AI-Protocol Team"]
+license = "MIT OR Apache-2.0"
+description = "Protocol Runtime for AI-Protocol - A high-performance Rust reference implementation"
+repository = "https://github.com/hiddenpath/ai-lib-rust"
+readme = "README.md"
+rust-version = "1.70"
+keywords = ["ai", "llm", "streaming", "protocol", "openai"]
+categories = ["api-bindings", "network-programming", "asynchronous"]
+
+# Prevent publishing internal/work files and reports in the crate package.
+include = [
+  "Cargo.toml",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-APACHE",
+  "LICENSE-MIT",
+  "src/**",
+  "examples/**",
+]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+futures = { version = "0.3", features = ["alloc"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# HTTP client
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# JSON manipulation
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Hot reload and atomic operations
+arc-swap = "1.6"
+notify = "6.1"
+
+# JSON Schema validation
+jsonschema = "0.18"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+url = "2.5"
+async-trait = "0.1"
+bytes = "1.5"
+async-recursion = "1.0"
+lru = "0.12"
+keyring = "2.0"
+uuid = { version = "1.6", features = ["v4"] }
+base64 = "0.22"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tokio-stream = "0.1"
+mockito = "1.2"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "custom_protocol"
+path = "examples/custom_protocol.rs"
+
+[[example]]
+name = "test_protocol_loading"
+path = "examples/test_protocol_loading.rs"
+
+[[bin]]
+name = "validate_protocols"
+path = "src/bin/validate_protocols.rs"

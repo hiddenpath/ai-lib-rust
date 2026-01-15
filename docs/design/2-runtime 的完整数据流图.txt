@@ -1,0 +1,357 @@
+说得对，这一版我们把“fallback 从 manifest/runtime 中抽离”，只保留在应用层策略里。下面是 **修正后的第二份：manifest → runtime 的完整数据流图（不包含协议层 fallback）**。
+
+---
+
+## 1. 高层总览：三层分工重新划分
+
+先把边界画清楚：
+
+```text
+┌─────────────────────────────┐
+│       应用层 / 上层框架      │
+│  (RAG, Agent, Service 等)   │
+│  - 模型选择 (model select)  │
+│  - 策略 & fallback          │
+└────────────┬────────────────┘
+             │ 调用：call(model, operator, input)
+             ▼
+┌─────────────────────────────┐
+│         Runtime 层          │
+│  (Manifest-first Interpreter)│
+│  - 解析 manifest            │
+│  - 构造 HTTP 请求           │
+│  - 流解析 & 统一事件        │
+│  - 限制 & 计费 & 日志       │
+│  - 不做任何 fallback 决策   │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│         Provider 层          │
+│   各种大模型服务端点         │
+└─────────────────────────────┘
+```
+
+**关键改动：**
+
+- Runtime 不再内建任何 fallback 链、fallback 逻辑。
+- fallback/多模型策略 完全由应用层自己组合：  
+  `try model A → fail → try model B`。
+
+---
+
+## 2. Manifest → Runtime 的修正后数据流
+
+下面是 **单个模型调用** 的完整链路，不包含任何 fallback。
+
+### 2.1 manifest 加载：ManifestLoader
+
+```text
+manifest.yaml / JSON
+       │
+       ▼
+ManifestLoader.from_str / from_file
+       │
+       ▼
+Manifest { provider, model, endpoints, adapter, limits, pricing, tools, ... }
+```
+
+**职责：**
+
+- 只做结构解析（YAML/JSON → Rust struct）。
+- 不做语义判断（不关心模型好坏，也不管怎么用）。
+- 完全与 provider/策略/应用解耦。
+
+---
+
+### 2.2 注册：ModelRegistry
+
+```text
+Manifest
+    │
+    ▼
+ModelRegistry.register(manifest.model, manifest)
+```
+
+Runtime 这时就有了一个“模型配置数据库”：
+
+```text
+model_name → Manifest
+```
+
+仍然没有任何 fallback 信息；每个 manifest 仅代表一个独立模型的声明。
+
+---
+
+### 2.3 调用入口：Runtime.call
+
+应用层发起调用：
+
+```rust
+runtime.call("gpt-4.1", "generate", input).await
+```
+
+数据流：
+
+```text
+应用层
+   │ model="gpt-4.1", operator="generate", input
+   ▼
+Runtime.call(...)
+```
+
+---
+
+### 2.4 OperatorPlanner：从 manifest 得到执行计划
+
+```text
+Runtime.call
+   │
+   ▼
+从 ModelRegistry 取出该 model 对应 Manifest
+   │
+   ▼
+OperatorPlanner.plan(manifest, "generate")
+   │
+   ▼
+生成 PlanResult：
+  - endpoint: endpoints["generate"]
+  - adapter: endpoint.adapter (e.g. "openai")
+  - pricing: endpoint.pricing 或 manifest.pricing
+  - limits: manifest.limits
+  - tools: manifest.tools
+```
+
+**现在 Planner 不再返回任何 fallback 相关字段**；只构造“这一票调用”的执行计划。
+
+---
+
+### 2.5 LimitsEngine：本地限制检查（仅针对当前模型）
+
+```text
+PlanResult.limits
+   │
+   ▼
+LimitsEngine:
+  - 检查 max_tokens（基于 input 长度 + 预估输出）
+  - 检查本模型的 rate_limit（如有需要）
+   │
+   ├─ 不满足 → 返回错误 (ErrorKind::LimitExceeded)
+   └─ 满足 → 继续
+```
+
+Runtime 这里只负责对 **当前模型** 做限额检查，不决定“那我是不是去换另一个模型”。
+
+---
+
+### 2.6 ExecutionEngine：执行一次模型调用
+
+ExecutionEngine 内部由几个子模块协同：
+
+```text
+PlanResult
+   │
+   ▼
+HttpExecutor + AuthInjector
+   │
+   ▼
+AdapterRegistry（查找 adapter 函数）
+   │
+   ▼
+StreamInterpreter（生成统一 ModelStream）
+   │
+   ▼
+UsageEngine（统计 usage）
+   │
+   ▼
+Logging & Metrics（记录调用信息）
+```
+
+分步骤展开：
+
+#### 2.6.1 HttpExecutor：构造 HTTP 请求
+
+从 PlanResult 和 Manifest 中取：
+
+- base_url（可以在 manifest 或外部配置中，根据 provider name 查到）
+- endpoint.path / method / headers / stream
+- payload（由 runtime 组合，比如 `{ model, messages, tools... }`）
+
+执行：
+
+```text
+构造 URL = base_url + path
+构造 req = client.method(URL).headers(...).json(payload)
+发送请求 → 得到 resp
+
+如果 stream = true:
+  raw_stream = resp.bytes_stream()
+否则:
+  full_json = resp.json()
+```
+
+HttpExecutor 不关心“provider 是 openai 还是 anthropic”，只是在执行“某个 HTTP 接口”。
+
+---
+
+#### 2.6.2 AdapterRegistry：选择适配器（解析流）
+
+来自 PlanResult：
+
+```text
+adapter_name = "openai" / "anthropic" / "ollama" / ...
+```
+
+数据流：
+
+```text
+adapter_fn = adapter_registry[adapter_name]
+adapter_fn(raw_stream) → ModelStream<EventEnvelope>
+```
+
+adapter 是 **字符串驱动的解析函数**，不是 trait 绑定的 provider。
+
+---
+
+#### 2.6.3 StreamInterpreter：统一事件格式
+
+不同 provider 的原始流 → 转成：
+
+```rust
+EventEnvelope::TextDelta(String)
+EventEnvelope::Token(String)
+EventEnvelope::Error(String)
+EventEnvelope::Done
+```
+
+对应用和上层框架来说：
+
+- 它们只看 EventEnvelope，不关心具体 provider 的事件语义。
+- 所有 provider 的流都在这里“被抹平”。
+
+---
+
+#### 2.6.4 UsageEngine：一次调用的 usage 统计
+
+基于：
+
+- 输入文本（input）
+- 输出汇总（可以在上层消费者中累积 TextDelta/Token，完结后传回 UsageEngine）
+- PlanResult.pricing（来自 manifest）
+
+UsageEngine 给出：
+
+```rust
+Usage {
+    tokens_in,
+    tokens_out,
+    cost_usd,
+}
+```
+
+这为应用层的 billing/cost control 提供原始数据。
+
+---
+
+#### 2.6.5 Logging & Metrics：记录调用行为
+
+记录信息包括但不限于：
+
+- model / provider / operator
+- latency
+- error 类型（如有）
+- usage（tokens_in / tokens_out / cost）
+- 是否流式
+
+这些都属于 runtime 的“观测能力”，与 fallback 无关。
+
+---
+
+### 2.7 Runtime 返回统一结果给应用层
+
+最终 runtime 返回：
+
+```rust
+Result<ModelStream<EventEnvelope>, ModelError>
+```
+
+- 成功：应用层消费流（或者聚合为最终文本）。
+- 失败：返回带 ErrorKind 的错误（比如 Network、Timeout、RateLimit、LimitExceeded、ProviderError 等）。
+
+这里是**关键的交界点**：
+
+- runtime 到此为止 —— 它只是告诉你“当前模型调用成功/失败、以及失败原因”。
+- **如何处理失败（是否换模型/降级/重试），完全交给应用层。**
+
+---
+
+## 3. 应用层如何利用 runtime 做 fallback（示意）
+
+有了上面的 runtime，应用层可以自己写一个“模型选择器 + fallback 逻辑”，完全不改 manifest、不改 runtime：
+
+```rust
+async fn smart_generate(
+    runtime: &Runtime,
+    prompt: &str,
+) -> anyhow::Result<String> {
+    let candidates = vec!["gpt-4.1", "claude-3.5", "llama3-local"];
+
+    for model in candidates {
+        match runtime.call(model, "generate", prompt).await {
+            Ok(mut stream) => {
+                let mut output = String::new();
+                while let Some(ev) = stream.next().await {
+                    match ev? {
+                        EventEnvelope::TextDelta(delta) => output.push_str(&delta),
+                        EventEnvelope::Done => break,
+                        _ => {}
+                    }
+                }
+                return Ok(output);
+            }
+            Err(err) => {
+                // 根据 ErrorKind 决定是否继续尝试下一个模型
+                if err.kind.is_fatal() {
+                    break;
+                }
+                continue;
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("all models failed"))
+}
+```
+
+**注意：**
+
+- 模型列表（candidates）在应用层定义，可以是配置、策略、在线学习结果。
+- 逻辑完全不在 manifest 和 runtime 中。
+- runtime 只负责 “call(model, …)” 和 “告诉你为什么失败”。
+
+这就完全符合你说的：
+
+> fallback 放在用户应用去处理，manifest 不可能写死的。
+
+---
+
+## 4. 这版数据流相对之前的本质修正
+
+- 删除了 manifest 中的 `fallback` 字段设定。  
+- 删除了 runtime 中任何“自动 fallback 链”的逻辑。  
+- fallback 只以 **应用层逻辑** 的形式存在。  
+- runtime 的唯一职责：  
+  - **解释 manifest**  
+  - **执行调用**  
+  - **返回精确错误**  
+  - **提供 usage & observability**  
+
+从而保持了：
+
+- manifest：只描述“模型自身是什么”  
+- runtime：只负责“对单模型的调用和解释”  
+- application：负责“如何组合多个模型、如何 fallback、如何优化成本/延迟”
+
+这才是干净的三层分工，也和你 manifest-first 的追求完全一致。
+
+---

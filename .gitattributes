@@ -1,0 +1,21 @@
+# Keep release archives clean (git archive).
+# This does not delete files from the repo; it only excludes them from exported archives.
+
+target/ export-ignore
+*.log export-ignore
+*.pdb export-ignore
+test_* export-ignore
+0-*.txt export-ignore
+1-*.txt export-ignore
+2-*.txt export-ignore
+3-*.txt export-ignore
+4-*.txt export-ignore
+5-*.txt export-ignore
+6-*.txt export-ignore
+7-*.txt export-ignore
+8-*.txt export-ignore
+IMPLEMENTATION_NOTES.md export-ignore
+IMPROVEMENTS_COMPLETED.md export-ignore
+LEARNINGS_FROM_AI_LIB.md export-ignore
+RUNTIME_BACKLOG.md export-ignore
+build_error.log export-ignore

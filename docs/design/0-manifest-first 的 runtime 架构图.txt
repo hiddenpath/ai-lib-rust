@@ -1,0 +1,324 @@
+很好，那我们来做你要的这一项：**manifest-first 的 runtime 架构图** —— 完全不依赖 provider trait，而是把 manifest 当成唯一“真相”。
+
+下面这个设计是专门为你刚才的目标定制的：
+
+> 运行时是一个解释器（interpreter），  
+> provider / operator / endpoint / adapter 全是数据，  
+> 运行时本身不“认识”任何 provider。
+
+---
+
+## 1. 总体架构概览
+
+先给一个高层结构图（逻辑组件，不是代码模块）：
+
+```text
+                 ┌────────────────────────────┐
+                 │        应用 / 上层框架       │
+                 │ (RAG, Agent, MCP, 服务等)   │
+                 └────────────┬───────────────┘
+                              │  调用：generate / embed / tools 等
+                              ▼
+                 ┌────────────────────────────┐
+                 │        Runtime API         │
+                 │  (manifest-first interface)│
+                 └────────────┬───────────────┘
+                              │
+                              ▼
+          ┌──────────────────────────────────────────┐
+          │          Manifest-first Runtime          │
+          │                                          │
+          │  ┌───────────────┐   ┌────────────────┐ │
+          │  │ ManifestLoader│   │  RuntimeContext │ │
+          │  └───────┬──────┘   └────────┬───────┘ │
+          │          │                   │         │
+          │          ▼                   │         │
+          │   ┌───────────────┐         │         │
+          │   │ ModelRegistry │◄────────┘         │
+          │   └───────┬──────┘                   │
+          │           │                          │
+          │           ▼                          │
+          │  ┌─────────────────┐    ┌────────────────────────┐
+          │  │ OperatorPlanner │    │   Limits & Fallback     │
+          │  └───────┬────────┘    └──────────┬─────────────┘
+          │          │                         │
+          │          ▼                         ▼
+          │   ┌────────────────────────────────────────────┐
+          │   │          Execution Engine                  │
+          │   │  (HTTP Executor + Adapter Registry +       │
+          │   │   Stream Interpreter + Usage Engine)       │
+          │   └────────────────────────────────────────────┘
+          └────────────────────────────────────────────────┘
+```
+
+**关键点：**
+
+- Runtime 把所有“知识”都从 manifest 拿，自己不内置任何 provider 逻辑。
+- Provider / model / endpoint / pricing / adapter / fallback / tools，全部是 manifest 数据。
+- Runtime 的代码是固定的；能力扩展靠的是 manifest + adapter 注册。
+
+---
+
+## 2. 核心组件与职责划分
+
+### 2.1 ManifestLoader（加载与验证）
+
+**职责：**
+
+- 从文件 / URL / Git / 配置中心等位置加载 manifest（YAML/JSON）。
+- 做 schema 验证（版本、字段、必填项）。
+- 解析为内部结构 `ManifestConfig`，交给 ModelRegistry。
+
+**关键点：**
+
+- Loader 不解释“语义”，只负责“结构正确、版本正确”。
+
+---
+
+### 2.2 ModelRegistry（纯数据的模型注册表）
+
+```rust
+struct ModelRegistry {
+    // key: logical model name (e.g. "gpt-4.1")
+    models: HashMap<String, ModelConfig>,
+}
+```
+
+**ModelConfig 示例：**
+
+```rust
+struct ModelConfig {
+    name: String,          // manifest.model
+    provider: String,      // "openai"
+    capabilities: Vec<String>, // ["generate", "embed", ...]
+    endpoints: HashMap<String, EndpointConfig>, // operator -> endpoint
+    fallback_chain: Vec<FallbackEntry>,
+    limits: LimitsConfig,
+    tools: Vec<ToolConfig>,
+    pricing: GlobalPricingConfig, // 可选：全局/默认价格
+}
+```
+
+**特点：**
+
+- Registry 不关心“如何调用”，它只是一个结构化配置仓库。
+- Runtime API 调用时，只需要传入一个 logical model name（或从默认模型推断）。
+
+---
+
+### 2.3 RuntimeContext（上下文环境）
+
+**职责：**
+
+- 保存全局状态：  
+  - `ModelRegistry`  
+  - `AdapterRegistry`（字符串 → 解析器函数）  
+  - 日志 / metrics handle  
+  - token 计数器实现  
+  - 鉴权配置（如 env var 访问器）
+
+**注意：**
+
+- Context 是 runtime 的“容器（container）”，但仍然不包含任何 provider 逻辑，只包含“运行环境”。
+
+---
+
+### 2.4 OperatorPlanner（操作规划器）
+
+这是 manifest-first 的关键之一，它负责：
+
+- 根据调用请求（如 `generate`）和 `ModelConfig`：
+  - 决定使用哪个 endpoint（`endpoints["generate"]`）  
+  - 判断是否支持 streaming  
+  - 找到对应的 `adapter` 名称  
+  - 提取 pricing / limits / tools 等信息  
+- 如果当前模型能力不足，可尝试 fallback 链。
+
+**伪逻辑：**
+
+```rust
+fn plan(
+    ctx: &RuntimeContext,
+    model_name: &str,
+    operator: &str,
+) -> PlanResult {
+    let model = ctx.registry.get(model_name)?;
+    let ep = model.endpoints.get(operator)?;
+    let adapter_name = ep.adapter.clone(); // e.g. "openai"
+
+    PlanResult {
+        endpoint: ep,
+        adapter_name,
+        limits: &model.limits,
+        pricing: ep.pricing.or(model.pricing),
+        fallback_chain: &model.fallback_chain,
+        tools: &model.tools,
+    }
+}
+```
+
+**关键思想：**
+
+- 调度逻辑完全基于 manifest 内的结构。
+- Planner 本身与 provider 完全解耦。
+
+---
+
+### 2.5 Limits & Fallback Engine（限制与降级引擎）
+
+**Limits 部分：**
+
+- 根据 `limits.max_tokens`、`limits.rate_limit` 等检查：
+  - prompt 长度  
+  - QPS / RPM  
+- 超限则直接在本地拒绝（不发起请求）。
+
+**Fallback 部分：**
+
+- 当一次调用失败时：
+  - 根据错误类型（rate limit / provider down / invalid request）决定是否尝试 fallback。
+  - 根据 `fallback_chain`（manifest 中定义）选择下一个模型。
+- 整个 fallback 决策过程只用 manifest，不写死 provider 名称。
+
+---
+
+### 2.6 Execution Engine（执行引擎）
+
+这是 runtime 的“心脏”，但仍然 manifest-first。内部再拆：
+
+```text
+Execution Engine =
+    HTTP Executor
+  + Auth Injector
+  + Adapter Registry
+  + Stream Interpreter
+  + Usage Engine
+  + Logging & Metrics
+```
+
+#### 2.6.1 HTTP Executor
+
+- 接受 `EndpointConfig` + payload（来自 Planner）。
+- 构造 HTTP 请求：URL, method, headers, body。
+  - URL = `provider.base_url` + `endpoint.path`
+  - Headers = endpoint.headers + auth headers（由 Auth Injector 决定）
+- 返回：
+  - 非流式：完整 `Response`（JSON）。
+  - 流式：`bytes_stream()`。
+
+**关键：**
+
+- HTTP Executor 不关心 provider 名称，只看配置。
+
+#### 2.6.2 AdapterRegistry（字符串 → 解析器）
+
+```rust
+struct AdapterRegistry {
+    map: HashMap<String, AdapterFunc>,
+}
+
+type AdapterFunc =
+    fn(RawByteStream) -> ModelStream; // 统一输出 EventEnvelope stream
+```
+
+- 根据 manifest 中的 `adapter: "openai"`，从 map 中取出对应解析逻辑。
+- 你可以在编译时注册（硬编码），也可以未来支持动态加载（插件）。
+
+#### 2.6.3 Stream Interpreter（统一流格式）
+
+- 将不同 provider 的流（SSE / chunk JSON / raw text）转成统一的：
+
+```rust
+type ModelStream = Pin<Box<dyn Stream<Item = Result<EventEnvelope, Error>> + Send>>;
+```
+
+- EventEnvelope 只属于 runtime，不属于 provider。
+
+#### 2.6.4 Usage Engine
+
+- 根据 pricing（来自 manifest.endpoint.pricing 或 model.pricing）：
+  - tokens_in = tokenizer(prompt)
+  - tokens_out = tokenizer(completed_text)
+  - cost = tokens_in * price.input + tokens_out * price.output
+- 记录 usage：
+  - 用于日志、metrics、计费。
+
+#### 2.6.5 Logging & Metrics
+
+- 每次调用：  
+  - `tracing::info!(model, operator, tokens_in, tokens_out, cost, ...)`  
+  - Prometheus metrics：calls_total / tokens_total / cost_total
+
+这一切都基于 manifest 的配置，无需知道“谁是 openai”。
+
+---
+
+## 3. 调用路径数据流：从 API 调用到流输出
+
+以一次 `generate` 调用为例，画一个完整的数据流：
+
+```text
+应用调用：runtime.generate("gpt-4.1", "Hello") 
+                 │
+                 ▼
+         Runtime API (generate)
+                 │
+         ┌───────▼───────────────────────────┐
+         │   1) OperatorPlanner.plan(...)    │
+         │      ├─ 从 ModelRegistry 读取 model config
+         │      ├─ 选出 endpoints["generate"]
+         │      ├─ 解析 adapter / pricing / limits / tools
+         │      └─ 生成 PlanResult            │
+         └────────────────────────────────────┘
+                 │
+                 ▼
+         ┌────────────────────────────────────┐
+         │   2) Limits & Fallback Engine      │
+         │      ├─ 检查 max_tokens / rate_limit
+         │      ├─ 构造 primary + fallback 链
+         │      └─ 选择当前使用的 model+endpoint │
+         └────────────────────────────────────┘
+                 │
+                 ▼
+         ┌────────────────────────────────────┐
+         │   3) Execution Engine              │
+         │      ├─ HTTP Executor 构造请求     │
+         │      │   - URL, method, headers    │
+         │      │   - body (prompt, tools...) │
+         │      ├─ 调用 reqwest               │
+         │      ├─ 如需流式：bytes_stream()   │
+         │      ├─ AdapterRegistry 选 adapter │
+         │      ├─ adapter(raw_stream) → ModelStream
+         │      └─ Usage Engine 更新统计      │
+         └────────────────────────────────────┘
+                 │
+                 ▼
+         返回给调用方：ModelStream<EventEnvelope>
+```
+
+---
+
+## 4. 这套架构如何满足你的核心诉求
+
+**1. manifest-first：**
+
+- runtime 只依赖 `ManifestConfig`，不依赖 provider trait。
+- 新增 provider / model / endpoint / pricing / tools → 只需改 manifest。
+
+**2. 解耦：**
+
+- provider 的 HTTP 细节完全在 manifest + adapter 里，runtime 不需要写 if/else。
+- operator 也是 manifest 数据，不写在代码里。
+
+**3. 可扩展：**
+
+- 想支持 RAG / Agent / MCP / Skill，只需要在 manifest 增加：
+  - 新的 capability / operator / endpoint / tools。
+- runtime 完全不需要改核心代码，只扩展解释逻辑和 adapter。
+
+**4. 可商业化：**
+
+- pricing / usage / limits / fallback 都在 manifest 中配置。
+- runtime 只负责执行与计量，非常适合 SaaS 化。
+
+---

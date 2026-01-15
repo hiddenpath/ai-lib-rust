@@ -1,0 +1,65 @@
+name: Validate Protocol Files
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - 'schemas/**'
+      - '.github/workflows/validate-protocols.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - 'schemas/**'
+      - '.github/workflows/validate-protocols.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Protocol Manifests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout ai-lib-rust
+        uses: actions/checkout@v4
+        with:
+          path: ai-lib-rust
+
+      - name: Checkout ai-protocol
+        uses: actions/checkout@v4
+        with:
+          repository: hiddenpath/ai-protocol
+          path: ai-protocol
+          # If ai-protocol is a submodule, use:
+          # submodules: true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ai-lib-rust/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ai-lib-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build validation tool
+        working-directory: ai-lib-rust
+        run: |
+          cargo build --release --bin validate_protocols
+
+      - name: Validate protocol files
+        working-directory: ai-lib-rust
+        env:
+          AI_PROTOCOL_DIR: ${{ github.workspace }}/ai-protocol
+        run: |
+          cargo run --release --bin validate_protocols

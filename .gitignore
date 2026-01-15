@@ -1,0 +1,32 @@
+/target
+
+# Build artifacts
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs and temporary files
+*.log
+build_error.log
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.orig
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts (should go in examples/ or tests/)
+test_*.rs
+!tests/**/*.rs
+!examples/**/*.rs

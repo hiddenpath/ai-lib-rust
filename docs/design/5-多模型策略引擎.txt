@@ -1,0 +1,324 @@
+太好了，Alex。下面是 **第五份：多模型策略引擎（Strategy Engine）设计**。  
+这一份是你整个架构的“上层大脑”，它站在 manifest-first runtime 之上，利用 runtime 的统一错误模型、统一流接口、统一 usage 数据，构建一个 **可插拔、可组合、可扩展的多模型策略系统**。
+
+我会保持你要求的风格：**不抽象、不飘、全部工程级、可直接写代码的设计**。
+
+---
+
+# 🧠 第五份：多模型策略引擎（Strategy Engine）  
+### —— manifest-first + runtime-agnostic + provider-agnostic
+
+策略引擎是应用层组件，负责：
+
+- 选择模型（model selection）
+- 决定是否 fallback（基于错误类型）
+- 决定是否重试（基于错误类型）
+- 决定模型排序（基于成本、延迟、能力、成功率）
+- 决定是否切换模型（基于 usage 或预算）
+- 决定是否动态调整策略（在线学习）
+
+runtime 不参与策略，只提供：
+
+- `call(model, operator, input) -> Result<ModelStream, ModelError>`
+- usage 数据
+- latency 数据
+- 错误分类
+
+策略引擎是 runtime 的“上层 orchestrator”。
+
+---
+
+# 🧱 1. Strategy Engine 的核心接口（Rust）
+
+```rust
+pub struct StrategyRequest {
+    pub operator: String,
+    pub input: String,
+}
+
+pub struct StrategyDecision {
+    pub model: String,
+}
+
+pub trait StrategyEngine {
+    fn decide(&self, req: &StrategyRequest) -> Vec<StrategyDecision>;
+}
+```
+
+### 解释  
+- `decide()` 返回一个 **模型候选列表**，按优先级排序。  
+- runtime 会按顺序尝试这些模型（由应用层控制）。  
+- runtime 不知道策略是什么，只知道“调用模型”。
+
+---
+
+# 🧱 2. Strategy Engine 的组成模块
+
+策略引擎由多个可插拔模块组成：
+
+```
+StrategyEngine
+   ├─ CapabilityFilter（能力过滤）
+   ├─ CostRanker（按成本排序）
+   ├─ LatencyRanker（按延迟排序）
+   ├─ SuccessRateRanker（按成功率排序）
+   ├─ UserPreference（用户偏好）
+   ├─ Randomization（A/B 测试）
+   └─ CompositeEngine（组合器）
+```
+
+每个模块都实现：
+
+```rust
+trait StrategyComponent {
+    fn apply(&self, req: &StrategyRequest, candidates: Vec<String>) -> Vec<String>;
+}
+```
+
+---
+
+# 🧱 3. CapabilityFilter：按能力过滤（manifest-first）
+
+manifest-first 的优势是：  
+**每个模型的 capabilities 都在 manifest 里。**
+
+```rust
+pub struct CapabilityFilter<'a> {
+    pub registry: &'a ModelRegistry,
+}
+
+impl<'a> StrategyComponent for CapabilityFilter<'a> {
+    fn apply(&self, req: &StrategyRequest, _: Vec<String>) -> Vec<String> {
+        self.registry
+            .models()
+            .iter()
+            .filter(|(_, m)| m.capabilities.contains(&req.operator))
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+}
+```
+
+### 效果  
+- 自动过滤掉不支持 generate/embed/vision/tools 的模型  
+- 不需要写死 provider  
+- 不需要写死模型  
+- 完全 manifest-first
+
+---
+
+# 🧱 4. CostRanker：按成本排序（pricing-aware）
+
+manifest-first 的另一个优势是：  
+**每个模型的 pricing 都在 manifest 里。**
+
+```rust
+pub struct CostRanker<'a> {
+    pub registry: &'a ModelRegistry,
+}
+
+impl<'a> StrategyComponent for CostRanker<'a> {
+    fn apply(&self, req: &StrategyRequest, candidates: Vec<String>) -> Vec<String> {
+        let mut list: Vec<_> = candidates
+            .into_iter()
+            .map(|model| {
+                let m = self.registry.get(&model).unwrap();
+                let price = m.pricing.as_ref().map(|p| p.input + p.output).unwrap_or(1.0);
+                (model, price)
+            })
+            .collect();
+
+        list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        list.into_iter().map(|(m, _)| m).collect()
+    }
+}
+```
+
+### 效果  
+- 自动选择最便宜的模型  
+- 不需要写死价格  
+- 不需要写死 provider  
+- 完全 manifest-first
+
+---
+
+# 🧱 5. LatencyRanker：按延迟排序（metrics-aware）
+
+runtime 会记录每个模型的平均延迟：
+
+```rust
+pub struct LatencyRanker<'a> {
+    pub metrics: &'a MetricsStore,
+}
+
+impl<'a> StrategyComponent for LatencyRanker<'a> {
+    fn apply(&self, _: &StrategyRequest, candidates: Vec<String>) -> Vec<String> {
+        let mut list: Vec<_> = candidates
+            .into_iter()
+            .map(|model| {
+                let latency = self.metrics.get_latency(&model).unwrap_or(1000.0);
+                (model, latency)
+            })
+            .collect();
+
+        list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        list.into_iter().map(|(m, _)| m).collect()
+    }
+}
+```
+
+### 效果  
+- 自动选择最快的模型  
+- 不需要写死 provider  
+- 不需要写死模型  
+- 完全 runtime-first（metrics）+ manifest-first（capabilities）
+
+---
+
+# 🧱 6. SuccessRateRanker：按成功率排序（error-aware）
+
+runtime 会记录每个模型的成功率：
+
+```rust
+pub struct SuccessRateRanker<'a> {
+    pub metrics: &'a MetricsStore,
+}
+
+impl<'a> StrategyComponent for SuccessRateRanker<'a> {
+    fn apply(&self, _: &StrategyRequest, candidates: Vec<String>) -> Vec<String> {
+        let mut list: Vec<_> = candidates
+            .into_iter()
+            .map(|model| {
+                let rate = self.metrics.get_success_rate(&model).unwrap_or(0.5);
+                (model, rate)
+            })
+            .collect();
+
+        list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()); // success rate desc
+        list.into_iter().map(|(m, _)| m).collect()
+    }
+}
+```
+
+### 效果  
+- 自动选择成功率高的模型  
+- 适合生产环境  
+- 适合 fallback 策略（优先尝试成功率高的）
+
+---
+
+# 🧱 7. CompositeEngine：组合策略（可插拔）
+
+```rust
+pub struct CompositeEngine<'a> {
+    pub components: Vec<Box<dyn StrategyComponent + 'a>>,
+}
+
+impl<'a> StrategyEngine for CompositeEngine<'a> {
+    fn decide(&self, req: &StrategyRequest) -> Vec<StrategyDecision> {
+        let mut candidates: Vec<String> = Vec::new();
+
+        for comp in &self.components {
+            candidates = comp.apply(req, candidates);
+        }
+
+        candidates
+            .into_iter()
+            .map(|m| StrategyDecision { model: m })
+            .collect()
+    }
+}
+```
+
+### 效果  
+你可以组合：
+
+```rust
+let engine = CompositeEngine {
+    components: vec![
+        Box::new(CapabilityFilter { registry }),
+        Box::new(CostRanker { registry }),
+        Box::new(LatencyRanker { metrics }),
+        Box::new(SuccessRateRanker { metrics }),
+    ],
+};
+```
+
+这就形成了一个：
+
+- 能力过滤  
+- 成本排序  
+- 延迟排序  
+- 成功率排序  
+
+的 **多模型智能选择器**。
+
+---
+
+# 🧱 8. 应用层如何使用 StrategyEngine + Runtime
+
+```rust
+async fn smart_call(
+    engine: &impl StrategyEngine,
+    runtime: &Runtime,
+    operator: &str,
+    input: &str,
+) -> Result<ModelStream, ModelError> {
+    let req = StrategyRequest {
+        operator: operator.into(),
+        input: input.into(),
+    };
+
+    let decisions = engine.decide(&req);
+
+    for d in decisions {
+        match runtime.call(&d.model, operator, input).await {
+            Ok(stream) => return Ok(stream),
+            Err(err) => {
+                if err.kind.is_client_bug() {
+                    return Err(err);
+                }
+                continue;
+            }
+        }
+    }
+
+    Err(ModelError {
+        kind: ErrorKind::Unknown,
+        code: Some("NO_MODEL_SUCCEEDED".into()),
+        message: "all models failed".into(),
+        source: None,
+    })
+}
+```
+
+### 效果  
+- runtime 不知道策略  
+- manifest 不知道策略  
+- 策略引擎不做 HTTP  
+- 三者完全解耦  
+- 组合起来就是一个智能多模型系统
+
+---
+
+# 🎉 最终效果：你现在拥有一个真正的多模型智能系统
+
+通过这份设计，你已经具备：
+
+### ✔ manifest-first（模型声明）  
+### ✔ runtime-first（统一调用）  
+### ✔ error-first（统一错误）  
+### ✔ strategy-first（智能选择）  
+
+并且：
+
+- 不写死 provider  
+- 不写死模型  
+- 不写死 fallback  
+- 不写死排序逻辑  
+- 不写死成本/延迟/成功率  
+- 不写死能力过滤  
+
+所有逻辑都可插拔、可组合、可扩展。
+
+这是一个真正的 **AI 多模型操作系统级架构**。

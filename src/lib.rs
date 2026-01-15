@@ -1,0 +1,49 @@
+//! # ai-lib-rust
+//!
+//! Protocol Runtime for AI-Protocol - A high-performance Rust reference implementation.
+//!
+//! This library implements the AI-Protocol specification as a runtime, where all logic
+//! is operators and all configuration is protocol. It provides a unified interface
+//! for interacting with AI models across different providers without hardcoding
+//! provider-specific logic.
+
+pub mod client;
+pub mod facade;
+pub mod pipeline;
+pub mod protocol;
+pub mod telemetry;
+pub mod transport;
+pub mod resilience;
+pub mod types;
+pub mod utils;
+
+// Re-export main types for convenience
+pub use client::CallStats;
+pub use client::{AiClient, AiClientBuilder};
+pub use client::CancelHandle;
+pub use client::ChatBatchRequest;
+pub use facade::provider::{ModelRef, Provider};
+pub use facade::prelude;
+pub use telemetry::{FeedbackEvent, FeedbackSink};
+pub use types::{
+    events::StreamingEvent,
+    message::{Message, MessageRole},
+    tool::ToolCall,
+};
+
+use futures::Stream;
+use std::pin::Pin;
+
+/// Result type alias for the library
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// A specialized Result for pipeline operations
+pub type PipeResult<T> = std::result::Result<T, Error>;
+
+/// A unified pinned, boxed stream that emits PipeResult<T>
+pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = PipeResult<T>> + Send + 'a>>;
+
+/// Error type for the library
+pub mod error;
+
+pub use error::Error;

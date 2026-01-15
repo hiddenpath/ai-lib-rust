@@ -1,0 +1,292 @@
+好的，Alex。下面是 **第七份：如何在 manifest 中优雅地表达多种协议（SSE / JSON / text / websocket / grpc），并与 parser 解耦**。
+
+这一份非常关键，因为它决定了：
+
+- manifest 如何描述“协议格式”
+- runtime 如何根据 manifest 自动选择 parser
+- parser 如何保持 provider‑agnostic
+- 未来如何扩展到 WebSocket / gRPC / 自定义协议
+- 如何保持 manifest-first 的纯粹性
+
+我会给你一个 **可落地的 schema 设计 + runtime 解释逻辑 + parser 注册机制**，完全符合你前面确立的架构哲学。
+
+---
+
+# 🧱 第七份：Manifest 中的协议（protocol）字段设计  
+### —— parser 解耦、provider 无关、manifest-first
+
+我们要解决的问题是：
+
+> manifest 如何描述“这个 endpoint 的返回流是什么格式”  
+> 而不泄露 provider 信息，也不写死 parser。
+
+正确的抽象是：
+
+# ✔ manifest 描述协议（protocol）  
+# ✔ runtime 根据 protocol 选择 parser  
+# ✔ parser 是协议解析器，不是 provider adapter  
+# ✔ provider 完全不出现在 parser 层
+
+---
+
+# 1. Manifest schema：新增 `protocol` 字段
+
+在 endpoint 下新增一个字段：
+
+```yaml
+endpoints:
+  generate:
+    path: v1/chat/completions
+    method: POST
+    stream: true
+    protocol: sse
+```
+
+或者：
+
+```yaml
+protocol: json_chunk
+```
+
+或者：
+
+```yaml
+protocol: text
+```
+
+或者未来：
+
+```yaml
+protocol: websocket
+```
+
+或者：
+
+```yaml
+protocol: grpc
+```
+
+### 关键点  
+- **protocol 是协议格式，不是 provider 名称**  
+- **parser 是 protocol 的实现，不是 provider 的实现**  
+- manifest 不关心 parser，只关心 protocol 名称  
+- runtime 用 protocol 名称查 parser registry  
+
+---
+
+# 2. Manifest schema 的 Rust 结构
+
+```rust
+#[derive(Debug, Clone, Deserialize)]
+pub struct EndpointConfig {
+    pub path: String,
+    pub method: String,
+    pub stream: bool,
+    pub protocol: Option<String>, // e.g. "sse", "json_chunk", "text"
+    pub headers: Option<HashMap<String, String>>,
+    pub pricing: Option<PricingConfig>,
+}
+```
+
+---
+
+# 3. OperatorPlanner：把 protocol 传给 runtime
+
+```rust
+pub struct PlanResult<'a> {
+    pub endpoint: &'a EndpointConfig,
+    pub protocol: &'a str,
+    pub pricing: Option<&'a PricingConfig>,
+    pub limits: Option<&'a LimitsConfig>,
+}
+```
+
+Planner 逻辑：
+
+```rust
+let protocol = endpoint.protocol.as_deref().unwrap_or("text");
+
+Ok(PlanResult {
+    endpoint,
+    protocol,
+    pricing,
+    limits,
+})
+```
+
+---
+
+# 4. ParserRegistry：protocol → parser 函数
+
+```rust
+pub struct ParserRegistry {
+    map: HashMap<String, ParserFunc>,
+}
+
+impl ParserRegistry {
+    pub fn register(&mut self, protocol: &str, func: ParserFunc) {
+        self.map.insert(protocol.to_string(), func);
+    }
+
+    pub fn get(&self, protocol: &str) -> Option<&ParserFunc> {
+        self.map.get(protocol)
+    }
+}
+```
+
+---
+
+# 5. Runtime 如何使用 protocol → parser
+
+```rust
+let parser_name = plan.protocol;
+let parser_fn = self.parsers.get(parser_name)
+    .ok_or(ModelError::internal(format!("parser {} not found", parser_name)))?;
+
+let model_stream = parser_fn(raw_stream);
+```
+
+### 关键点  
+- runtime 不知道 provider  
+- runtime 不知道 parser 是谁  
+- runtime 只知道 protocol 字符串  
+- parser 是一个函数指针，不是 trait，不是 provider impl  
+
+---
+
+# 6. 内建 protocol 列表（可扩展）
+
+你可以定义一组内建协议：
+
+| protocol 名称 | 描述 | parser |
+|---------------|------|--------|
+| `sse` | Server-Sent Events | sse_parser |
+| `json_chunk` | JSON per chunk | json_chunk_parser |
+| `text` | raw text chunk | text_parser |
+| `websocket` | WebSocket streaming | ws_parser（未来） |
+| `grpc` | gRPC streaming | grpc_parser（未来） |
+| `custom` | 用户自定义协议 | 用户注册 parser |
+
+manifest 只写 protocol 名称，parser registry 决定如何解析。
+
+---
+
+# 7. Parser 插件系统：支持用户自定义协议
+
+用户可以注册自己的协议解析器：
+
+```rust
+parser_registry.register("my_custom_protocol", my_custom_parser);
+```
+
+manifest：
+
+```yaml
+protocol: my_custom_protocol
+```
+
+runtime：
+
+```rust
+parser_fn = parser_registry["my_custom_protocol"];
+```
+
+### 这意味着：
+
+- 你可以支持任何协议  
+- 不需要修改 runtime  
+- 不需要修改 manifest schema  
+- 不需要修改 provider 逻辑  
+
+这是 **真正的插件化协议层**。
+
+---
+
+# 8. 为什么 protocol 字段比 parser 字段更合理？
+
+你之前敏锐地指出：
+
+> “adapter” 容易让人误解为 provider adapter，不合理。
+
+protocol 则完全避免这个问题：
+
+- protocol 是“格式”，不是“provider”
+- parser 是“格式解析器”，不是“provider adapter”
+- manifest-first 的纯粹性得到保持
+
+---
+
+# 9. 完整示例：OpenAI（SSE）
+
+```yaml
+endpoints:
+  generate:
+    path: v1/chat/completions
+    method: POST
+    stream: true
+    protocol: sse
+```
+
+---
+
+# 10. 完整示例：Ollama（JSON chunk）
+
+```yaml
+endpoints:
+  generate:
+    path: api/generate
+    method: POST
+    stream: true
+    protocol: json_chunk
+```
+
+---
+
+# 11. 完整示例：本地模型（纯文本）
+
+```yaml
+endpoints:
+  generate:
+    path: v1/run
+    method: POST
+    stream: true
+    protocol: text
+```
+
+---
+
+# 12. 完整示例：未来扩展（WebSocket）
+
+```yaml
+endpoints:
+  generate:
+    path: ws://localhost:9000/generate
+    method: WEBSOCKET
+    stream: true
+    protocol: websocket
+```
+
+---
+
+# 🎉 最终效果：你现在拥有一个真正的协议层抽象
+
+通过这个设计，你实现了：
+
+### ✔ manifest-first  
+manifest 只描述协议，不描述 provider。
+
+### ✔ provider-agnostic  
+runtime 不知道 provider，只知道 protocol。
+
+### ✔ parser 插件化  
+protocol → parser 函数指针。
+
+### ✔ 可扩展  
+未来支持 WebSocket / gRPC / 自定义协议无需改 runtime。
+
+### ✔ 解耦  
+provider 行为、协议格式、策略逻辑完全分离。
+
+### ✔ 工程可落地  
+所有代码都能直接放进 ai-lib-rust 或你的 runtime。
+

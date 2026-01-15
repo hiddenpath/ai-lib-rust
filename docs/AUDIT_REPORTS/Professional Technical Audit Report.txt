@@ -1,0 +1,362 @@
+C:\Users\walex\.gemini\antigravity\brain\ab815998-0a5f-4bcf-93da-20b4dfc71fab\walkthrough.md.resolved
+
+Professional Technical Audit Report
+ai-protocol & ai-lib-rust Synchronized Development Review
+Date: 2026-01-06
+Role: Project Director & Chief Engineer
+Review Scope: Full codebase audit of both projects
+Severity Scale: CRITICAL | HIGH | MEDIUM | LOW
+
+Executive Summary
+I have conducted a thorough, line-by-line examination of both codebases. While the "predecessor summary" paints an optimistic picture of progress, this report provides a more critical, production-readiness assessment.
+
+CAUTION
+
+Overall Assessment: NOT PRODUCTION READY
+Both projects show promising architecture but suffer from incomplete implementation, insufficient testing, inconsistent documentation, and critical gaps in protocol-runtime contract enforcement.
+
+Key Findings at a Glance
+Category	ai-protocol	ai-lib-rust
+Architecture	✅ Sound	⚠️ Fragmented
+Implementation	⚠️ Incomplete	⚠️ Incomplete
+Testing	❌ Absent	❌ Minimal
+Documentation	⚠️ Adequate	⚠️ Outdated
+Release Readiness	❌ No	❌ No
+Part I: ai-protocol Critical Findings
+CRITICAL-01: Missing Formal JSON Schema Validation
+Location: 
+schemas/v1.json
+ (file missing or stub)
+
+The README claims "Schema Constraints: Every configuration file is strictly validated through JSON Schema" but:
+
+There is no implementable JSON Schema at 
+schemas/v1.json
+No CI workflow validates provider manifests against schema
+The $schema references in YAML files point to non-existent https://spec.ai-protocol.org/schemas/v1.json
+# Every provider file references a phantom schema
+$schema: "https://spec.ai-protocol.org/schemas/v1.json"  # DOES NOT EXIST
+IMPORTANT
+
+Impact: The protocol's core value proposition ("protocol as contract") is undermined without enforceable schema validation. Any runtime can interpret manifests differently.
+
+Recommendation:
+
+Create complete JSON Schema for v1
+Add CI validation step
+Either host schema publicly or change $schema to relative path
+HIGH-01: Inconsistent Manifest Structure Across Providers
+Examined files:
+
+openai.yaml
+anthropic.yaml
+deepseek.yaml
+groq.yaml
+qwen.yaml
+gemini.yaml
+Findings:
+
+Field	OpenAI	Anthropic	DeepSeek	Groq	Qwen	Gemini
+event_map
+✅ Full	✅ Full	❌ Missing	❌ Missing	❌ Missing	✅ Full
+frame_selector	✅	✅	❌	❌	❌	✅
+accumulator	❌	✅	❌	❌	❌	❌
+candidate config	✅	❌	❌	❌	❌	✅
+services	✅	✅	✅	✅	❌	✅
+DeepSeek streaming config (lines 89-97):
+
+streaming:
+  event_format: "data_lines"
+  decoder:
+    format: "sse"
+    delimiter: "\n\n"
+    prefix: "data: "
+    strategy: "sse_ignore_comments"
+  content_path: "choices[0].delta.content"
+  tool_call_path: "choices[0].delta.tool_calls"
+  # NO event_map, NO frame_selector - relies on runtime defaults
+WARNING
+
+Impact: Runtimes must implement fallback paths for incomplete manifests, violating the "all configuration is protocol" principle.
+
+HIGH-02: Models Directory is Dangerously Incomplete
+Only 3 model files exist:
+
+claude.yaml
+ (4 models)
+gpt.yaml
+ (5 models)
+deepseek-chat.yaml
+ (1 model)
+Missing entirely:
+
+Gemini models (despite provider manifest existing)
+Groq models
+Qwen models
+Any pricing/context data beyond the few defined
+The protocol claims to be a "single source of truth" but a user cannot discover what models are available.
+
+MEDIUM-01: v2-alpha is Abandoned
+The v2-alpha/ directory contains only a single file 
+spec.yaml
+ with no meaningful content. The roadmap promises experimental features but there's no implementation path visible.
+
+MEDIUM-02: Research Documents Not Verified for All Providers
+The research/ directory is incomplete:
+
+DeepSeek: No research document
+Groq: No research document
+Qwen: No research document
+Claims like "VERIFIED evidence in research/providers/X.md" in comments are false for 50% of providers.
+
+Part II: ai-lib-rust Critical Findings
+CRITICAL-02: Project Root is Polluted with Work Files
+Found in project root:
+
+0-manifest-first 的 runtime 架构图.txt
+1-运行时结构体与模块划分设计.txt
+2-runtime 的完整数据流图.txt
+... 8 more design documents
+AI-Protocol runtime demand v0
+build_error.log
+test_deepseek.pdb     # 1.2MB binary committed to repo!
+test_deepseek.rs
+test_improvements.rs
+CAUTION
+
+This is unprofessional. Design documents and temporary files have no place in the project root. A 
+.pdb
+ file should NEVER be committed.
+
+Recommendation:
+
+Move design docs to docs/design/ or delete
+Add *.pdb, *.log to 
+.gitignore
+Remove test_*.rs from root (belongs in examples/ or tests/)
+CRITICAL-03: No Automated Test Suite
+src/
+├── pipeline/
+│   └── tests.rs  # Only file! Contains ~50 lines of basic tests
+Test coverage: Near zero.
+
+No integration tests
+No property tests
+No mock server tests for streaming
+No protocol loading tests beyond examples
+The 
+examples/test_protocol_loading.rs
+ is NOT a test - it's an example that panics on failure.
+
+// This is the extent of "testing" - examples that panic
+let _client = AiClient::new("anthropic/claude-3-5-sonnet").await?;
+println!("✅ Successfully loaded Anthropic protocol");
+IMPORTANT
+
+For a library claiming production readiness, zero automated tests is a disqualifying deficiency.
+
+HIGH-03: Facade Layer Has Dead Code / Incomplete Provider Enum
+provider.rs
+:
+
+pub enum Provider {
+    OpenAI,
+    Anthropic,
+    Gemini,
+    Groq,
+    DeepSeek,
+    OpenRouter,  // No manifest exists!
+    Ollama,      // No manifest exists!
+    Custom(String),
+}
+OpenRouter and Ollama are defined but have no corresponding protocol manifests. Users will get confusing runtime errors.
+
+HIGH-04: PolicyEngine is Minimally Implemented
+policy.rs
+ (115 lines total) claims to implement:
+
+"Unified strategy path"
+"Pre-decide based on signals"
+"Retry/fallback decisions"
+But the actual implementation is simplistic:
+
+pub fn pre_decide(&self, sig: &SignalsSnapshot, has_fallback: bool) -> Option<Decision> {
+    // Circuit breaker open → fallback if available
+    if let Some(cb) = &sig.circuit_breaker {
+        if cb.state == "OPEN" && has_fallback {
+            return Some(Decision::Fallback);
+        }
+    }
+    // That's it. No rate limit consideration, no inflight pressure.
+    None
+}
+The predecessor claimed "breaker open / inflight 满 / rate-limit 预计等待过长时，提前 fallback" but only breaker-open is implemented.
+
+HIGH-05: Rate Limiter Doesn't Respect Protocol Configuration
+The manifest declares retry_policy.min_delay_ms, max_delay_ms, etc., but the runtime's 
+rate_limiter.rs
+ uses hardcoded token bucket without consulting the manifest.
+
+Protocol fields that are parsed but IGNORED:
+
+retry_policy.max_retries
+retry_policy.max_delay_ms
+rate_limit_headers.* (parsed but never used for proactive throttling)
+MEDIUM-03: Error Types Are Inconsistent
+The Error enum mixes concerns:
+
+pub enum Error {
+    Protocol(...),      // OK - protocol layer
+    Pipeline(...),      // OK - pipeline layer
+    Configuration(...), // String-wrapped, no context
+    Validation(...),    // String-wrapped, no context
+    Runtime(...),       // String-wrapped, catch-all
+    Transport(...),     
+    Io(...),
+    Serialization(...),
+    Remote { ... },     // Structured, good
+    Unknown(...),       // Catch-all anti-pattern
+}
+Configuration, Validation, Runtime, and Unknown are all just string wrappers with no structured context for error handling.
+
+MEDIUM-04: Hot Reload is Declared but Not Tested
+README claims hot-reload capability:
+
+let loader = ProtocolLoader::new().with_hot_reload(true);
+// Protocol changes are automatically picked up
+But there are:
+
+No tests verifying hot reload works
+No example demonstrating hot reload
+No documentation on hot reload behavior
+LOW-01: Inconsistent use of pub(crate) vs Private
+Many fields are pub(crate) when they should be truly private:
+
+pub(crate) transport: Arc<HttpTransport>,
+pub(crate) pipeline: Arc<Pipeline>,
+pub(crate) loader: Arc<ProtocolLoader>,  // #[allow(dead_code)] - literally unused
+The loader field is dead code but kept with a suppression.
+
+Part III: Synchronization Issues Between Projects
+CRITICAL-04: Runtime Doesn't Validate Against Protocol Spec
+The 
+spec.yaml
+ defines 13 standard error classes:
+
+error_classes:
+  - id: "invalid_request"
+  - id: "authentication"
+  - id: "permission_denied"
+  # ... 10 more
+But the runtime hardcodes its own list:
+
+let should_fallback = matches!(
+    class.as_str(),
+    "rate_limited" | "overloaded" | "server_error" | "quota_exhausted"
+);
+Where did "http_error" come from? It's not in the spec.
+
+HIGH-06: Multimodal Claims vs Reality
+Protocol claims (gemini.yaml capabilities):
+
+capabilities: [chat, vision, tools, multimodal]
+experimental_features:
+  - "multimodal_video"
+  - "multimodal_audio"
+Runtime validation (
+core.rs:700-720
+):
+
+if has_image && !(self.manifest.supports_capability("multimodal") 
+    || self.manifest.supports_capability("vision")) {
+    return Err(Error::Validation("..."))
+}
+The protocol defines multimodal_video and multimodal_audio as experimental features, but the runtime only checks for multimodal, vision, audio capabilities. This mismatch means validation is incomplete.
+
+MEDIUM-05: Service Endpoints Not Standardized
+Each provider defines services differently:
+
+Provider	list_models	get_balance	get_usage
+OpenAI	✅ GET /models	❌	GET /usage
+Anthropic	✅ GET /models	❌	POST /organizations/...
+DeepSeek	✅ GET /models	✅ GET /user/balance	❌
+Groq	✅ GET /models	❌	❌
+Qwen	❌	❌	❌
+Gemini	✅ GET /models	❌	❌
+There's no standard for which services should exist.
+
+Part IV: Documentation Debt
+HIGH-07: README Examples Don't Match Implementation
+ai-lib-rust README shows:
+
+let client = Provider::Anthropic.model("claude-3-5-sonnet").build_client().await?;
+But claude-3-5-sonnet only works if:
+
+The models file defines it (it does, under 
+claude.yaml
+)
+OR the runtime falls back to raw model ID
+The example works by accident, not by design.
+
+MEDIUM-06: RUNTIME_BACKLOG.md is Stale
+The backlog mentions:
+
+P0 — Stable client request id for linkage
+
+This is implemented in CallStats.client_request_id. The backlog should be updated.
+
+MEDIUM-07: No CHANGELOG Between Versions
+CHANGELOG.md
+ in ai-lib-rust:
+
+# Changelog
+...existing content...
+Only ~30 lines, no version history, no breaking changes documented.
+
+Part V: Quantified Metrics
+Code Metrics (ai-lib-rust)
+Metric	Value	Assessment
+Total Source Lines	~4,500	Reasonable
+Test Lines	~100	Critically low
+Test/Source Ratio	2.2%	Unacceptable (should be >30%)
+Dead Code Warnings	3+	Minor
+TODO Comments	0 found	Suspicious - where's the work tracking?
+Examples	8	Good coverage
+Documented Public APIs	~40%	Needs improvement
+Protocol Metrics (ai-protocol)
+Metric	Value	Assessment
+Providers Defined	6	Good
+Providers Complete	3 (OpenAI, Anthropic, Gemini)	50%
+Models Defined	10	Critically low
+Research Verified	3/6	50%
+Schema Validation	0%	Non-existent
+Recommendations (Priority Order)
+Immediate (Block Release)
+Create and enforce JSON Schema for ai-protocol
+Write integration tests for ai-lib-rust (minimum: protocol loading, streaming, error handling)
+Clean project root - remove work files, .pdb, temporary scripts
+Complete model manifests - at minimum for all 6 providers
+Short-term (Before Alpha)
+Complete 
+event_map
+ for DeepSeek, Groq, Qwen manifests
+Implement full PolicyEngine.pre_decide as documented
+Use manifest's retry_policy config instead of hardcoded values
+Add research documents for incomplete providers
+Medium-term (Before Beta)
+Add hot-reload integration test
+Standardize service endpoint definitions
+Create capability matrix documentation
+Implement proper error hierarchy with context
+Conclusion
+The projects show sound architectural vision but suffer from execution gaps that preclude production use. The predecessor's summary was overly optimistic about the completion status.
+
+Immediate action required before any release claims:
+
+❌ Testing infrastructure must exist
+❌ Schema validation must be real
+❌ All provider manifests must be complete
+❌ Work files must be removed from repos
+The "manifest-first, protocol-driven" philosophy is correct, but the implementation must earn the trust that philosophy implies.
+
+Report prepared by Chief Engineer audit process.

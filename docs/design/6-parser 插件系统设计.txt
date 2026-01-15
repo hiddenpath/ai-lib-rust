@@ -1,0 +1,352 @@
+说成 parser，我也更舒服——语义清晰，而且完全贴合“协议解析层”的职责。
+
+下面就是你要的第六份：**parser 插件系统设计（动态注册为主，可扩展到动态加载）**。  
+仍然坚持这几个原则：manifest-first、runtime-agnostic、provider-agnostic、不过度抽象。
+
+---
+
+### 一、目标：parser 是“协议解析插件”，不是 provider 插件
+
+统一定位：
+
+- **输入：** `RawByteStream`（HTTP bytes_stream）
+- **输出：** `ModelStream<EventEnvelope>`
+- **职责：** 把不同协议/格式（SSE、JSON chunk、纯文本……）解析成统一事件流
+- **不做：** provider 逻辑、策略、fallback、计费等
+
+接口形态：
+
+```rust
+pub type ParserFunc =
+    fn(RawByteStream) -> ModelStream;
+```
+
+manifest 中只是写一个字符串：
+
+```yaml
+endpoints:
+  generate:
+    path: v1/chat/completions
+    method: POST
+    stream: true
+    parser: sse
+```
+
+runtime：`parser_registry["sse"]` → 函数。
+
+---
+
+### 二、核心类型与 registry 设计
+
+#### 2.1 统一类型定义
+
+```rust
+// engine/stream.rs
+use bytes::Bytes;
+use futures::Stream;
+use std::pin::Pin;
+
+pub type RawByteStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>;
+
+#[derive(Debug)]
+pub enum EventEnvelope {
+    TextDelta(String),
+    Token(String),
+    Error(String),
+    Done,
+}
+
+pub type ModelStream =
+    Pin<Box<dyn Stream<Item = Result<EventEnvelope, crate::error::ModelError>> + Send>>;
+```
+
+#### 2.2 ParserRegistry
+
+```rust
+use std::collections::HashMap;
+use crate::engine::stream::{RawByteStream, ModelStream};
+
+pub type ParserFunc = fn(RawByteStream) -> ModelStream;
+
+pub struct ParserRegistry {
+    map: HashMap<String, ParserFunc>,
+}
+
+impl ParserRegistry {
+    pub fn new() -> Self {
+        Self { map: HashMap::new() }
+    }
+
+    pub fn register(&mut self, name: &str, func: ParserFunc) {
+        self.map.insert(name.to_string(), func);
+    }
+
+    pub fn get(&self, name: &str) -> Option<&ParserFunc> {
+        self.map.get(name)
+    }
+}
+```
+
+这个 registry 是 runtime 的一部分，但只做“名字到函数”的映射。
+
+---
+
+### 三、Parser 的几个内建实现（SSE / JSON chunk / text）
+
+#### 3.1 SSE parser（典型：OpenAI / Anthropic）
+
+```rust
+use futures::StreamExt;
+use crate::engine::stream::{RawByteStream, ModelStream, EventEnvelope};
+use crate::error::{ModelError, ErrorKind};
+
+pub fn sse_parser(raw: RawByteStream) -> ModelStream {
+    Box::pin(raw.map(|chunk_res| {
+        let chunk = chunk_res.map_err(|e| ModelError {
+            kind: ErrorKind::Network,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        let text = String::from_utf8(chunk.to_vec()).map_err(|e| ModelError {
+            kind: ErrorKind::ParseError,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        // 极简版示例：按行解析 "data: ..."
+        for line in text.lines() {
+            if line.starts_with("data: ") {
+                let payload = &line[6..];
+                if payload.trim() == "[DONE]" {
+                    return Ok(EventEnvelope::Done);
+                }
+                return Ok(EventEnvelope::TextDelta(payload.to_string()));
+            }
+        }
+
+        Ok(EventEnvelope::Done)
+    }))
+}
+```
+
+这里 parser 只关心 SSE 结构，不关心 payload JSON 里的具体字段，你可以根据需要升级为更强的解析器。
+
+#### 3.2 JSON chunk parser（典型：Ollama）
+
+```rust
+pub fn json_chunk_parser(raw: RawByteStream) -> ModelStream {
+    Box::pin(raw.map(|chunk_res| {
+        let chunk = chunk_res.map_err(|e| ModelError {
+            kind: ErrorKind::Network,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        let text = String::from_utf8(chunk.to_vec()).map_err(|e| ModelError {
+            kind: ErrorKind::ParseError,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| ModelError {
+            kind: ErrorKind::ParseError,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        if v["done"].as_bool().unwrap_or(false) {
+            return Ok(EventEnvelope::Done);
+        }
+
+        if let Some(resp) = v["response"].as_str() {
+            return Ok(EventEnvelope::TextDelta(resp.to_string()));
+        }
+
+        Ok(EventEnvelope::Done)
+    }))
+}
+```
+
+#### 3.3 纯文本 parser（简单 HTTP chunk）
+
+```rust
+pub fn text_parser(raw: RawByteStream) -> ModelStream {
+    Box::pin(raw.map(|chunk_res| {
+        let chunk = chunk_res.map_err(|e| ModelError {
+            kind: ErrorKind::Network,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        let text = String::from_utf8(chunk.to_vec()).map_err(|e| ModelError {
+            kind: ErrorKind::ParseError,
+            code: None,
+            message: e.to_string(),
+            source: Some(e.into()),
+        })?;
+
+        Ok(EventEnvelope::TextDelta(text))
+    }))
+}
+```
+
+---
+
+### 四、Parser 注册：绑定名字到实现（静态注册）
+
+运行时启动时，你可以做一个集中注册：
+
+```rust
+pub fn build_default_parser_registry() -> ParserRegistry {
+    let mut reg = ParserRegistry::new();
+    reg.register("sse", sse_parser);
+    reg.register("json_chunk", json_chunk_parser);
+    reg.register("text", text_parser);
+    reg
+}
+```
+
+未来你可以：
+
+- 在不同 crate 中提供更多 parser，实现一个 `register_*` 函数。
+- 在 feature flag 下决定是否注册某些 parser。
+
+---
+
+### 五、manifest 与 parser 的连接方式
+
+manifest 中的 endpoint：
+
+```yaml
+endpoints:
+  generate:
+    path: v1/chat/completions
+    method: POST
+    stream: true
+    parser: sse
+```
+
+Rust 映射（在 Manifest schema 中）：
+
+```rust
+pub struct EndpointConfig {
+    pub path: String,
+    pub method: String,
+    pub stream: bool,
+    pub parser: Option<String>, // e.g. "sse", "json_chunk", "text"
+    pub headers: Option<HashMap<String, String>>,
+    pub pricing: Option<PricingConfig>,
+}
+```
+
+OperatorPlanner 返回时带上 parser 名称：
+
+```rust
+pub struct PlanResult<'a> {
+    pub endpoint: &'a EndpointConfig,
+    pub parser: Option<&'a str>,
+    // ...
+}
+
+impl OperatorPlanner {
+    pub fn plan<'a>(manifest: &'a Manifest, operator: &str) -> anyhow::Result<PlanResult<'a>> {
+        let endpoint = manifest.endpoints.get(operator)
+            .ok_or_else(|| anyhow::anyhow!("Operator not supported"))?;
+
+        Ok(PlanResult {
+            endpoint,
+            parser: endpoint.parser.as_deref(),
+            // ...
+        })
+    }
+}
+```
+
+---
+
+### 六、Runtime 如何使用 parser（核心调用点）
+
+在 runtime 的 `call()` 里：
+
+```rust
+let plan = OperatorPlanner::plan(manifest, operator)
+    .map_err(|e| ModelError::invalid_request("OPERATOR_NOT_SUPPORTED", e))?;
+
+// HTTP 调用
+let resp = self.executor.execute(
+    &base_url,
+    &plan.endpoint.path,
+    &plan.endpoint.method,
+    plan.endpoint.headers.as_ref(),
+    payload,
+).await?;
+
+// 如果不是流式，parser 可以省略或用统一非流式处理
+if !plan.endpoint.stream {
+    // 非流式路径（可以单独处理）
+}
+
+// 流式路径
+let raw_stream = Box::pin(resp.bytes_stream());
+
+let parser_name = plan.parser.unwrap_or("text"); // fallback to text
+let parser_fn = self.parsers.get(parser_name).ok_or(ModelError {
+    kind: ErrorKind::Internal,
+    code: Some("PARSER_NOT_FOUND".into()),
+    message: format!("parser {} not found", parser_name),
+    source: None,
+})?;
+
+let model_stream = parser_fn(raw_stream);
+Ok(model_stream)
+```
+
+这里几点：
+
+- runtime 完全不关心“哪个 provider”，只看 manifest.endpoint.parser。
+- parser 名称由 manifest 决定，行为由 parser 实现决定。
+- parser 是“协议插件”，不是 provider 插件。
+
+---
+
+### 七、将来要动态加载 parser 怎么办？（可选扩展）
+
+如果你有需要，可以在此之上加一层“动态加载”：
+
+- 比如用 `libloading` 从 `.so`/`.dll` 加一个 parser 函数指针。
+- 或者用 `wasmtime`/`wasmer` 把 parser 写成 WASM 插件。
+
+但核心形态不变：
+
+```rust
+ParserFunc = fn(RawByteStream) -> ModelStream
+```
+
+区别只是：
+
+- 静态注册：编译时链接  
+- 动态注册：运行时从外部加载，再 `registry.register(name, func)`  
+
+从 runtime 调用侧看，完全一样。
+
+---
+
+### 八、你现在拥有的 parser 插件系统特性
+
+- **manifest-first：** parser 通过 manifest 中的 `parser` 字段绑定。
+- **runtime-agnostic：** parser 不知道 provider，不知道策略。
+- **provider-agnostic：** parser 只看协议格式，不看 provider 名。
+- **插件化：** 新格式只需实现一个 `fn parser(raw) -> ModelStream` 然后注册。
+- **解耦：** provider 的 HTTP 行为由 manifest + executor 负责，协议解析由 parser 负责，策略由应用层负责。
+
+如果你愿意，下一步我可以专门给一份：
+
+- **第七份：如何在 manifest 中优雅地表达多种协议（SSE / JSON / text / websocket / grpc），并与 parser 解耦**  
