@@ -2,9 +2,6 @@
 //!
 //! This operator handles failover to alternative models/providers.
 
-use crate::pipeline::PipelineError;
-use async_trait::async_trait;
-
 pub struct FallbackOperator {
     pub candidates: Vec<String>, // List of model IDs
 }

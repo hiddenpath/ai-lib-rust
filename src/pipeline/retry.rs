@@ -3,11 +3,8 @@
 //! This operator handles automatic retries for transient errors.
 //! It wraps the source stream logic rather than just transforming the output.
 
-use crate::pipeline::Transform;
-use crate::{BoxStream, PipeResult};
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 
 /// Configuration for retry logic
 #[derive(Debug, Clone)]
@@ -75,7 +72,7 @@ impl ResiliencePolicy for RetryOperator {
         // Check if error is retryable
         // This relies on improved ErrorContext 2.0 (upcoming)
         // For now, assume all runtime errors are potentially retryable if not strictly fatal
-        if let crate::Error::Runtime(ctx) = error {
+        if matches!(error, crate::Error::Runtime { .. }) {
             // if ctx contains status code, check against retry_on_status
             // logic to be refined with Error Handling 2.0
             return Some(self.backoff(attempt));
