@@ -65,12 +65,12 @@ impl ProtocolValidator {
             });
 
         let schema_value: serde_json::Value = serde_json::from_str(&schema_content)
-            .map_err(|e| ProtocolError::SchemaError(format!("Invalid JSON Schema: {}", e)))?;
+            .map_err(|e| ProtocolError::Internal(format!("Invalid JSON Schema: {}", e)))?;
 
         let schema = JSONSchema::options()
             .with_draft(Draft::Draft7)
             .compile(&schema_value)
-            .map_err(|e| ProtocolError::SchemaError(format!("Failed to compile schema: {}", e)))?;
+            .map_err(|e| ProtocolError::Internal(format!("Failed to compile schema: {}", e)))?;
 
         Ok(Self { schema })
     }
@@ -126,24 +126,26 @@ impl ProtocolValidator {
     }
 
     /// Fetch schema from a specific URL.
-    fn fetch_schema_from_url(url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    fn fetch_schema_from_url(
+        url: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Use a separate thread to avoid tokio runtime nesting issues
         // This ensures the blocking client runs in its own thread context
         let url = url.to_string();
         let (tx, rx) = std::sync::mpsc::channel();
-        
+
         std::thread::spawn(move || {
             let result = (|| -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
                 let client = reqwest::blocking::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
                     .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-                
+
                 let response = client
                     .get(&url)
                     .send()
                     .map_err(|e| format!("HTTP request failed: {}", e))?;
-                
+
                 if !response.status().is_success() {
                     return Err(format!(
                         "HTTP {}: {}",
@@ -152,13 +154,15 @@ impl ProtocolValidator {
                     )
                     .into());
                 }
-                
-                Ok(response.text().map_err(|e| format!("Failed to read response: {}", e))?)
+
+                Ok(response
+                    .text()
+                    .map_err(|e| format!("Failed to read response: {}", e))?)
             })();
-            
+
             let _ = tx.send(result);
         });
-        
+
         rx.recv()
             .map_err(|e| format!("Failed to receive result from thread: {}", e))?
     }
@@ -171,7 +175,7 @@ impl ProtocolValidator {
     /// Load schema from local file system (fallback for offline development).
     fn load_schema_from_local() -> Option<String> {
         use std::path::PathBuf;
-        
+
         let mut schema_paths: Vec<PathBuf> = Vec::new();
 
         // If AI_PROTOCOL_DIR/AI_PROTOCOL_PATH is set and is a local path, try resolving it in a
@@ -219,9 +223,27 @@ impl ProtocolValidator {
 
         // Priority 3: Common development paths (relative to crate root for determinism).
         let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        schema_paths.push(crate_dir.join("ai-protocol").join("schemas").join("v1.json"));
-        schema_paths.push(crate_dir.join("..").join("ai-protocol").join("schemas").join("v1.json"));
-        schema_paths.push(crate_dir.join("..").join("..").join("ai-protocol").join("schemas").join("v1.json"));
+        schema_paths.push(
+            crate_dir
+                .join("ai-protocol")
+                .join("schemas")
+                .join("v1.json"),
+        );
+        schema_paths.push(
+            crate_dir
+                .join("..")
+                .join("ai-protocol")
+                .join("schemas")
+                .join("v1.json"),
+        );
+        schema_paths.push(
+            crate_dir
+                .join("..")
+                .join("..")
+                .join("ai-protocol")
+                .join("schemas")
+                .join("v1.json"),
+        );
 
         // Try all paths in order
         for path in &schema_paths {
@@ -231,7 +253,7 @@ impl ProtocolValidator {
                 }
             }
         }
-        
+
         None
     }
 
@@ -247,7 +269,10 @@ impl ProtocolValidator {
             return Err(ProtocolError::ValidationError(format!(
                 "JSON Schema validation failed:\n  - {}",
                 error_msgs.join("\n  - ")
-            )));
+            ))
+            .with_hint(
+                "Check the official AI-Protocol documentation for the required file structure.",
+            ));
         }
 
         // 2. Perform basic logic validation
@@ -279,10 +304,14 @@ impl ProtocolValidator {
 
         // Validate protocol version
         if !manifest.protocol_version.starts_with("1.") {
-            return Err(ProtocolError::InvalidVersion(format!(
-                "Unsupported protocol version: {}",
-                manifest.protocol_version
-            )));
+            return Err(ProtocolError::InvalidVersion {
+                version: manifest.protocol_version.clone(),
+                max_supported: "1.x".to_string(),
+                hint: Some(
+                    "This version of the library only supports AI-Protocol v1.x manifests."
+                        .to_string(),
+                ),
+            });
         }
 
         Ok(())

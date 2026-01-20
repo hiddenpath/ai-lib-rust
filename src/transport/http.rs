@@ -3,9 +3,9 @@ use crate::{BoxStream, Result};
 use bytes::Bytes;
 use futures::TryStreamExt;
 use keyring::Entry;
+use reqwest::Proxy;
 use std::env;
 use std::time::Duration;
-use reqwest::Proxy;
 
 pub struct HttpTransport {
     client: reqwest::Client,
@@ -43,8 +43,12 @@ impl HttpTransport {
         let timeout_secs = env::var("AI_HTTP_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
-            .or_else(|| env::var("AI_TIMEOUT_SECS").ok().and_then(|s| s.parse::<u64>().ok()))
-            .unwrap_or(30);
+            .or_else(|| {
+                env::var("AI_TIMEOUT_SECS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+            })
+            .unwrap_or(300);
 
         let mut builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
@@ -72,9 +76,9 @@ impl HttpTransport {
             }
         }
 
-        let client = builder
-            .build()
-            .map_err(|e| crate::Error::Transport(crate::transport::TransportError::Other(e.to_string())))?;
+        let client = builder.build().map_err(|e| {
+            crate::Error::Transport(crate::transport::TransportError::Other(e.to_string()))
+        })?;
 
         Ok(Self {
             client,

@@ -36,37 +36,74 @@ pub struct UnifiedRequest {
 /// Protocol error types
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {
-    #[error("Failed to load protocol: {0}")]
-    LoadError(String),
+    #[error("Failed to load protocol from {path}: {reason}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    LoadError {
+        path: String,
+        reason: String,
+        hint: Option<String>,
+    },
 
     #[error("Protocol validation failed: {0}")]
     ValidationError(String),
 
-    #[error("Schema error: {0}")]
-    SchemaError(String),
+    #[error("Schema mismatch: expected {expected}, found {actual} at {path}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    SchemaMismatch {
+        path: String,
+        expected: String,
+        actual: String,
+        hint: Option<String>,
+    },
 
-    #[error("Protocol not found: {0}")]
-    NotFound(String),
+    #[error("Protocol not found: {id}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    NotFound { id: String, hint: Option<String> },
 
-    #[error("Invalid protocol version: {0}")]
-    InvalidVersion(String),
+    #[error("Unsupported protocol version '{version}' (max supported: {max_supported}){}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    InvalidVersion {
+        version: String,
+        max_supported: String,
+        hint: Option<String>,
+    },
+
+    #[error("Configuration manifest error: {0}")]
+    ManifestError(String),
+
+    #[error("Internal protocol error: {0}")]
+    Internal(String),
+
+    #[error("YAML syntax error: {0}")]
+    YamlError(String),
+}
+
+impl ProtocolError {
+    /// Attach an actionable hint to the error
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        let hint_val = Some(hint.into());
+        match self {
+            ProtocolError::LoadError { ref mut hint, .. } => *hint = hint_val,
+            ProtocolError::SchemaMismatch { ref mut hint, .. } => *hint = hint_val,
+            ProtocolError::NotFound { ref mut hint, .. } => *hint = hint_val,
+            ProtocolError::InvalidVersion { ref mut hint, .. } => *hint = hint_val,
+            _ => (),
+        }
+        self
+    }
 }
 
 /// Protocol manifest structure (parsed from YAML)
-/// 
+///
 /// Required fields per schema: id, protocol_version, endpoint, availability, capabilities
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtocolManifest {
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
-    
+
     // Required fields
     pub id: String,
     pub protocol_version: String,
     pub endpoint: EndpointDefinition,
     pub availability: AvailabilityConfig,
     pub capabilities: Capabilities,
-    
+
     // Provider metadata (required in manifests)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -74,11 +111,11 @@ pub struct ProtocolManifest {
     pub provider_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    pub status: String, // stable/beta/deprecated
+    pub status: String,   // stable/beta/deprecated
     pub category: String, // ai_provider / model_provider / third_party_aggregator
     pub official_url: String,
     pub support_contact: String,
-    
+
     // Auth and configuration
     pub auth: AuthConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,31 +125,31 @@ pub struct ProtocolManifest {
     pub response_format: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_paths: Option<HashMap<String, String>>,
-    
+
     // Streaming and features
     #[serde(skip_serializing_if = "Option::is_none")]
     pub streaming: Option<StreamingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub features: Option<FeaturesConfig>,
-    
+
     // Endpoints and services
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoints: Option<HashMap<String, EndpointConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub services: Option<HashMap<String, ServiceConfig>>,
-    
+
     // API families
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_families: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_api_family: Option<String>,
-    
+
     // Tooling and termination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub termination: Option<TerminationConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tooling: Option<ToolingConfig>,
-    
+
     // Error handling and resilience
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_policy: Option<RetryPolicy>,
@@ -120,7 +157,7 @@ pub struct ProtocolManifest {
     pub error_classification: Option<ErrorClassification>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rate_limit_headers: Option<RateLimitHeaders>,
-    
+
     // Experimental features
     #[serde(skip_serializing_if = "Option::is_none")]
     pub experimental_features: Option<Vec<String>>,
@@ -237,17 +274,19 @@ impl ProtocolManifest {
             "agentic" => self.capabilities.agentic,
             "parallel_tools" => self.capabilities.parallel_tools,
             "reasoning" => self.capabilities.reasoning,
-            "multimodal" => self.capabilities.multimodal || self.capabilities.vision || self.capabilities.audio,
+            "multimodal" => {
+                self.capabilities.multimodal || self.capabilities.vision || self.capabilities.audio
+            }
             "audio" => self.capabilities.audio,
             _ => false,
         }
     }
-    
+
     /// Get base URL from endpoint definition
     pub fn get_base_url(&self) -> &str {
         &self.endpoint.base_url
     }
-    
+
     /// Compile unified request to provider-specific format
     pub fn compile_request(
         &self,
@@ -444,8 +483,6 @@ pub struct EventMapRule {
     pub emit: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fields: Option<HashMap<String, String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extract: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

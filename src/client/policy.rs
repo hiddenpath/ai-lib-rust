@@ -150,7 +150,7 @@ impl PolicyEngine {
     /// - `attempt` is 0-based (first failure => attempt=0).
     /// - `has_fallback` indicates there is another candidate to try.
     pub fn decide(&self, err: &Error, attempt: u32, has_fallback: bool) -> Result<Decision> {
-        let (retryable, fallbackable, retry_after_ms) = match err {
+        let (mut retryable, mut fallbackable, retry_after_ms) = match err {
             Error::Remote {
                 retryable,
                 fallbackable,
@@ -174,6 +174,16 @@ impl PolicyEngine {
             }
             _ => (false, false, None),
         };
+
+        // Prefer ErrorContext 2.0 flags when present
+        if let Some(ctx) = err.context() {
+            if let Some(r) = ctx.retryable {
+                retryable = r;
+            }
+            if let Some(f) = ctx.fallbackable {
+                fallbackable = f;
+            }
+        }
 
         if retryable && attempt < self.max_retries {
             return Ok(Decision::Retry {

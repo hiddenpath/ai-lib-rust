@@ -70,11 +70,26 @@ impl ResiliencePolicy for RetryOperator {
         }
 
         // Check if error is retryable
-        // This relies on improved ErrorContext 2.0 (upcoming)
-        // For now, assume all runtime errors are potentially retryable if not strictly fatal
-        if matches!(error, crate::Error::Runtime { .. }) {
-            // if ctx contains status code, check against retry_on_status
-            // logic to be refined with Error Handling 2.0
+        // Priority 1: Use improved ErrorContext 2.0 flags if available
+        if let Some(ctx) = error.context() {
+            if let Some(retryable) = ctx.retryable {
+                if retryable {
+                    return Some(self.backoff(attempt));
+                } else {
+                    return None;
+                }
+            }
+        }
+
+        // For Remote: use its retryable flag when ErrorContext does not apply
+        if let crate::Error::Remote { retryable: true, .. } = error {
+            return Some(self.backoff(attempt));
+        }
+
+        // Priority 2: Fallback to heuristic classification
+        if matches!(error, crate::Error::Runtime { .. })
+            || matches!(error, crate::Error::Transport(_))
+        {
             return Some(self.backoff(attempt));
         }
 

@@ -23,7 +23,11 @@ impl ProtocolLoader {
             hot_reload: false,
             validator: crate::protocol::validator::ProtocolValidator::default(),
             // Use 100 as default cache size
-            cache: Mutex::new(LruCache::new(std::num::NonZeroUsize::new(100).unwrap())),
+            // NonZeroUsize::new(100) is guaranteed to be Some, but use expect for clarity
+            cache: Mutex::new(LruCache::new(
+                std::num::NonZeroUsize::new(100)
+                    .expect("Cache size must be non-zero (this should never happen)"),
+            )),
         }
     }
 
@@ -44,7 +48,12 @@ impl ProtocolLoader {
     pub async fn load_model(&self, model: &str) -> Result<ProtocolManifest, ProtocolError> {
         // 1. Check Cache
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().map_err(|e| {
+                ProtocolError::Internal(format!(
+                    "Failed to acquire cache lock while loading model '{}': {}",
+                    model, e
+                ))
+            })?;
             if let Some(manifest) = cache.get(model) {
                 return Ok(manifest.as_ref().clone());
             }
@@ -52,10 +61,10 @@ impl ProtocolLoader {
 
         let parts: Vec<&str> = model.split('/').collect();
         if parts.len() != 2 {
-            return Err(ProtocolError::NotFound(format!(
-                "Invalid model format: {}. Expected 'provider/model-name'",
-                model
-            )));
+            return Err(ProtocolError::NotFound {
+                id: model.to_string(),
+                hint: Some("Ensure the model name follows the 'provider/model' format".to_string()),
+            });
         }
 
         let provider = parts[0];
@@ -66,13 +75,18 @@ impl ProtocolLoader {
         // fall back to loading provider manifest directly using the provider segment.
         let manifest = match self.load_model_config(model_name).await {
             Ok(model_config) => self.load_provider(&model_config.provider).await?,
-            Err(ProtocolError::NotFound(_)) => self.load_provider(provider).await?,
+            Err(ProtocolError::NotFound { .. }) => self.load_provider(provider).await?,
             Err(e) => return Err(e),
         };
 
         // 2. Update Cache
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().map_err(|e| {
+                ProtocolError::Internal(format!(
+                    "Failed to acquire cache lock while caching model '{}': {}",
+                    model, e
+                ))
+            })?;
             cache.put(model.to_string(), Arc::new(manifest.clone()));
         }
 
@@ -155,10 +169,13 @@ impl ProtocolLoader {
             return Ok(manifest);
         }
 
-        Err(ProtocolError::NotFound(format!(
-            "Provider configuration not found: {}",
-            provider_id
-        )))
+        Err(ProtocolError::NotFound {
+            id: provider_id.to_string(),
+            hint: Some(format!(
+                "Check if the provider file '{}.yaml' exists in your protocol directory",
+                provider_id
+            )),
+        })
     }
 
     /// Load protocol from local file
@@ -166,11 +183,12 @@ impl ProtocolLoader {
         // Read as bytes first to handle different encodings
         let bytes = tokio::fs::read(path)
             .await
-            .map_err(|e| {
-                let path_str = path.to_string_lossy();
-                ProtocolError::LoadError(format!("Failed to read file '{}': {}", path_str, e))
+            .map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: e.to_string(),
+                hint: Some("Check if the file exists and you have read permissions.".to_string()),
             })?;
-        
+
         // Detect encoding and convert to UTF-8 string
         let content = if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
             // UTF-16 LE with BOM
@@ -183,34 +201,36 @@ impl ProtocolLoader {
                     utf16_chars.push(code_unit);
                 }
             }
-            String::from_utf16(&utf16_chars)
-                .map_err(|e| {
-                    let path_str = path.to_string_lossy();
-                    ProtocolError::LoadError(format!(
-                        "File '{}' contains invalid UTF-16: {}. Please convert the file to UTF-8 encoding.",
-                        path_str, e
-                    ))
-                })?
+            String::from_utf16(&utf16_chars).map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: format!(
+                    "Invalid UTF-16: {}. Please convert the file to UTF-8 encoding.",
+                    e
+                ),
+                hint: Some(
+                    "The runtime expects UTF-8 manifests. Try converting the file encoding."
+                        .to_string(),
+                ),
+            })?
         } else if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
             // UTF-8 with BOM, skip BOM
-            String::from_utf8(bytes[3..].to_vec())
-                .map_err(|e| {
-                    let path_str = path.to_string_lossy();
-                    ProtocolError::LoadError(format!(
-                        "File '{}' contains invalid UTF-8 (after BOM): {}",
-                        path_str, e
-                    ))
-                })?
+            String::from_utf8(bytes[3..].to_vec()).map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: format!("Invalid UTF-8 (after BOM): {}", e),
+                hint: Some(
+                    "Remove Byte Order Mark (BOM) and ensure the file is valid UTF-8.".to_string(),
+                ),
+            })?
         } else {
             // Regular UTF-8 (no BOM)
-            String::from_utf8(bytes)
-                .map_err(|e| {
-                    let path_str = path.to_string_lossy();
-                    ProtocolError::LoadError(format!(
-                        "File '{}' contains invalid UTF-8: {}. Please convert the file to UTF-8 encoding.",
-                        path_str, e
-                    ))
-                })?
+            String::from_utf8(bytes).map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: format!(
+                    "Invalid UTF-8: {}. Please convert the file to UTF-8 encoding.",
+                    e
+                ),
+                hint: Some("Verify the file content is valid UTF-8.".to_string()),
+            })?
         };
 
         let manifest: ProtocolManifest = Self::parse_manifest_yaml(&content)?;
@@ -226,26 +246,42 @@ impl ProtocolLoader {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| ProtocolError::LoadError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProtocolError::Internal(format!("Failed to create HTTP client: {}", e)))?;
 
         let response = client
             .get(url)
             .send()
             .await
-            .map_err(|e| ProtocolError::LoadError(format!("HTTP request failed: {}", e)))?;
+            .map_err(|e| ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!("HTTP request failed: {}", e),
+                hint: Some(
+                    "Check your internet connection and verify the URL is accessible.".to_string(),
+                ),
+            })?;
 
         if !response.status().is_success() {
-            return Err(ProtocolError::LoadError(format!(
-                "HTTP {}: {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
-            )));
+            return Err(ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!(
+                    "HTTP {}: {}",
+                    response.status(),
+                    response.text().await.unwrap_or_default()
+                ),
+                hint: Some(
+                    "Verify the remote registry URL and your API permissions if any.".to_string(),
+                ),
+            });
         }
 
         let content = response
             .text()
             .await
-            .map_err(|e| ProtocolError::LoadError(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!("Failed to read response: {}", e),
+                hint: None,
+            })?;
 
         let manifest: ProtocolManifest = Self::parse_manifest_yaml(&content)?;
 
@@ -274,7 +310,7 @@ impl ProtocolLoader {
             if looks_structural {
                 ProtocolError::ValidationError(format!("Invalid manifest structure: {}", msg))
             } else {
-                ProtocolError::LoadError(format!("Failed to parse YAML: {}", msg))
+                ProtocolError::YamlError(msg)
             }
         })
     }
@@ -323,19 +359,27 @@ impl ProtocolLoader {
             }
         }
 
-        Err(ProtocolError::NotFound(format!(
-            "Model not found: {}",
-            model_name
-        )))
+        Err(ProtocolError::NotFound {
+            id: model_name.to_string(),
+            hint: Some(
+                "Check if the model is registered in the manifests/v1/models/ directory"
+                    .to_string(),
+            ),
+        })
     }
 
     async fn load_model_registry(&self, path: &Path) -> Result<ModelRegistry, ProtocolError> {
-        let content = tokio::fs::read_to_string(path).await.map_err(|e| {
-            ProtocolError::LoadError(format!("Failed to read model registry: {}", e))
-        })?;
+        let content =
+            tokio::fs::read_to_string(path)
+                .await
+                .map_err(|e| ProtocolError::LoadError {
+                    path: path.to_string_lossy().to_string(),
+                    reason: format!("Failed to read model registry: {}", e),
+                    hint: None,
+                })?;
 
         let registry: ModelRegistry = serde_yaml::from_str(&content).map_err(|e| {
-            ProtocolError::LoadError(format!("Failed to parse model registry: {}", e))
+            ProtocolError::YamlError(format!("Failed to parse model registry: {}", e))
         })?;
 
         Ok(registry)

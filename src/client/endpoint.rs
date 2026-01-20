@@ -1,14 +1,22 @@
 //! Endpoint resolution and service calls
 
-use crate::{Error, Result};
 use crate::protocol::{EndpointConfig, ProtocolError};
+use crate::{Error, Result};
+use std::future::Future;
 
 use super::core::AiClient;
 
 pub trait EndpointExt {
     fn resolve_endpoint(&self, name: &str) -> Result<&EndpointConfig>;
-    async fn call_service(&self, service_name: &str) -> Result<serde_json::Value>;
-    async fn list_remote_models(&self) -> Result<Vec<String>>;
+
+    /// Call a generic service by name. The returned future is `Send` and safe to use across threads.
+    fn call_service(
+        &self,
+        service_name: &str,
+    ) -> impl Future<Output = Result<serde_json::Value>> + Send;
+
+    /// List models available from the provider. The returned future is `Send` and safe to use across threads.
+    fn list_remote_models(&self) -> impl Future<Output = Result<Vec<String>>> + Send;
 }
 
 impl EndpointExt for AiClient {
@@ -18,10 +26,10 @@ impl EndpointExt for AiClient {
             .as_ref()
             .and_then(|eps| eps.get(name))
             .ok_or_else(|| {
-                Error::Protocol(ProtocolError::NotFound(format!(
-                    "Endpoint '{}' not defined",
-                    name
-                )))
+                Error::Protocol(ProtocolError::NotFound {
+                    id: name.to_string(),
+                    hint: None,
+                })
             })
     }
 
@@ -33,10 +41,10 @@ impl EndpointExt for AiClient {
             .as_ref()
             .and_then(|services| services.get(service_name))
             .ok_or_else(|| {
-                Error::Protocol(ProtocolError::NotFound(format!(
-                    "Service '{}' not defined",
-                    service_name
-                )))
+                Error::Protocol(ProtocolError::NotFound {
+                    id: service_name.to_string(),
+                    hint: None,
+                })
             })?;
 
         self.transport

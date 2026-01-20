@@ -51,7 +51,7 @@ Enable with:
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.5.0", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.5.1", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -183,7 +183,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.5.0"
+ai-lib-rust = "0.5.1"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
@@ -328,6 +328,7 @@ See the `examples/` directory:
 - `custom_protocol.rs`: Loading custom protocol configurations
 - `list_models.rs`: Listing available models from provider
 - `service_discovery.rs`: Service discovery and custom service calls
+- `test_protocol_loading.rs`: Protocol loading sanity check
 
 ## 🧪 Testing
 

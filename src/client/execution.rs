@@ -9,9 +9,9 @@ use tracing::info;
 use uuid::Uuid;
 
 use super::core::{AiClient, UnifiedResponse};
+use super::endpoint::EndpointExt;
 use super::error_classification::is_fallbackable_error_class;
 use super::preflight::PreflightExt;
-use super::endpoint::EndpointExt;
 
 impl AiClient {
     fn error_code_from_body(&self, body: &str) -> Option<String> {
@@ -48,12 +48,18 @@ impl AiClient {
         if let Some(code) = code {
             matches!(
                 code,
-                "model_decommissioned" | "model_not_found" | "model_not_supported" | "invalid_model"
+                "model_decommissioned"
+                    | "model_not_found"
+                    | "model_not_supported"
+                    | "invalid_model"
             )
         } else {
             // Heuristic fallback for providers that don't expose a structured code.
             let b = body.to_lowercase();
-            b.contains("model") && (b.contains("decommission") || b.contains("not found") || b.contains("no longer supported"))
+            b.contains("model")
+                && (b.contains("decommission")
+                    || b.contains("not found")
+                    || b.contains("no longer supported"))
         }
     }
 
@@ -128,6 +134,24 @@ impl AiClient {
                 "ai-lib-rust streaming request failed"
             );
 
+            let upstream = PreflightExt::header_first(
+                self,
+                &headers,
+                &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
+            );
+            let mut context = crate::ErrorContext::new()
+                .with_status_code(status)
+                .with_request_id(client_request_id.clone())
+                .with_retryable(retryable)
+                .with_fallbackable(should_fallback)
+                .with_source("execute_stream_once");
+            if let Some(ec) = self.error_code_from_body(&body) {
+                context = context.with_error_code(ec);
+            }
+            if let Some(up) = upstream {
+                context = context.with_details(format!("upstream_id: {}", up));
+            }
+
             return Err(Error::Remote {
                 status,
                 class,
@@ -135,7 +159,9 @@ impl AiClient {
                 retryable,
                 fallbackable: should_fallback,
                 retry_after_ms,
-            });
+                context: None,
+            }
+            .with_context(context));
         }
 
         PreflightExt::on_success(self);
@@ -210,7 +236,7 @@ impl AiClient {
         if !request.stream {
             let status = resp.status().as_u16();
             let headers = resp.headers().clone(); // Clone headers before consuming resp
-            
+
             // Status-based error classification
             if !resp.status().is_success() {
                 PreflightExt::on_failure(self);
@@ -221,7 +247,7 @@ impl AiClient {
                     .and_then(|ec| ec.by_http_status.as_ref())
                     .and_then(|m| m.get(&status.to_string()).cloned())
                     .unwrap_or_else(|| "http_error".to_string());
-                
+
                 let should_fallback = is_fallbackable_error_class(class.as_str());
                 let _request_id = PreflightExt::header_first(
                     self,
@@ -235,7 +261,25 @@ impl AiClient {
                     .map(|v| v.contains(&status))
                     .unwrap_or(false);
                 let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
-                
+
+                let mut context = crate::ErrorContext::new()
+                    .with_status_code(status)
+                    .with_request_id(client_request_id)
+                    .with_retryable(retryable)
+                    .with_fallbackable(should_fallback || Self::is_transient_server_status(status))
+                    .with_source("execution_once");
+
+                if let Some(upstream_id) = PreflightExt::header_first(
+                    self,
+                    &headers,
+                    &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
+                ) {
+                    context = context.with_details(format!("upstream_id: {}", upstream_id));
+                }
+                if let Some(ec) = self.error_code_from_body(&body) {
+                    context = context.with_error_code(ec);
+                }
+
                 return Err(Error::Remote {
                     status,
                     class,
@@ -243,38 +287,47 @@ impl AiClient {
                     retryable,
                     fallbackable: should_fallback || Self::is_transient_server_status(status),
                     retry_after_ms,
-                });
+                    context: None,
+                }
+                .with_context(context));
             }
-            
+
             // Read the entire response body
-            let body_bytes = resp.bytes().await
+            let body_bytes = resp
+                .bytes()
+                .await
                 .map_err(|e| Error::Transport(crate::transport::TransportError::Http(e)))?;
             let body_text = String::from_utf8_lossy(&body_bytes);
-            
+
             // Parse as JSON and extract using response_paths
-            let json: serde_json::Value = serde_json::from_str(&body_text)
-                .map_err(|e| Error::runtime_with_context(
+            let json: serde_json::Value = serde_json::from_str(&body_text).map_err(|e| {
+                Error::runtime_with_context(
                     format!("Failed to parse response JSON: {}", e),
                     crate::ErrorContext::new().with_source("json_parse"),
-                ))?;
-            
+                )
+            })?;
+
             let mut response = UnifiedResponse::default();
-            
+
             // Extract content using response_paths
             if let Some(paths) = &self.manifest.response_paths {
                 if let Some(content_path) = paths.get("content") {
-                    if let Some(content) = crate::utils::json_path::PathMapper::get_string(&json, content_path) {
+                    if let Some(content) =
+                        crate::utils::json_path::PathMapper::get_string(&json, content_path)
+                    {
                         response.content = content;
                     }
                 }
                 if let Some(usage_path) = paths.get("usage") {
-                    if let Some(usage_value) = crate::utils::json_path::PathMapper::get_path(&json, usage_path) {
+                    if let Some(usage_value) =
+                        crate::utils::json_path::PathMapper::get_path(&json, usage_path)
+                    {
                         response.usage = Some(usage_value.clone());
                     }
                 }
                 // TODO: Extract tool_calls if needed
             }
-            
+
             if last_upstream_request_id.is_none() {
                 last_upstream_request_id = PreflightExt::header_first(
                     self,
@@ -282,7 +335,7 @@ impl AiClient {
                     &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
                 );
             }
-            
+
             let stats = CallStats {
                 model: request.model.clone(),
                 operation: request.operation.clone(),
@@ -298,7 +351,7 @@ impl AiClient {
                 usage: response.usage.clone(),
                 signals: self.signals().await,
             };
-            
+
             self.on_success();
             return Ok((response, stats));
         }
@@ -349,6 +402,19 @@ impl AiClient {
                 .unwrap_or(false);
             let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
 
+            let mut context = crate::ErrorContext::new()
+                .with_status_code(status)
+                .with_request_id(client_request_id.clone())
+                .with_retryable(retryable)
+                .with_fallbackable(should_fallback)
+                .with_source("execute_once_streaming");
+            if let Some(ec) = self.error_code_from_body(&body) {
+                context = context.with_error_code(ec);
+            }
+            if let Some(up) = request_id {
+                context = context.with_details(format!("upstream_id: {}", up));
+            }
+
             return Err(Error::Remote {
                 status,
                 class,
@@ -356,7 +422,9 @@ impl AiClient {
                 retryable,
                 fallbackable: should_fallback,
                 retry_after_ms,
-            });
+                context: None,
+            }
+            .with_context(context));
         }
 
         info!(

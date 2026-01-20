@@ -30,10 +30,15 @@ impl RuleBasedEventMapper {
     pub fn new(rules: &[EventMapRule]) -> Result<Self, PipelineError> {
         let mut compiled = Vec::new();
         for r in rules {
-            let matcher = JsonPathEvaluator::new(&r.match_expr)
-                .map_err(|e| PipelineError::EventMapper(format!("Invalid match expr: {}", e)))?;
+            let matcher = JsonPathEvaluator::new(&r.match_expr).map_err(|e| {
+                PipelineError::InvalidJsonPath {
+                    path: r.match_expr.clone(),
+                    error: e.to_string(),
+                    hint: None,
+                }
+            })?;
             let mut extract = Vec::new();
-            if let Some(map) = &r.extract {
+            if let Some(map) = &r.fields {
                 for (k, v) in map {
                     extract.push((k.clone(), v.clone()));
                 }
@@ -64,6 +69,14 @@ impl RuleBasedEventMapper {
                 let content = content.or_else(|| {
                     crate::utils::PathMapper::get_string(frame, "$.choices[0].delta.content")
                 })?;
+
+                // Filter out empty content to avoid unnecessary events and ensure consistency
+                // with fallback mapper behavior. Empty content can occur when providers send
+                // frames with null/empty delta.content (e.g., during tool calls or finish events).
+                if content.is_empty() {
+                    return None;
+                }
+
                 Some(StreamingEvent::PartialContentDelta {
                     content,
                     sequence_id: None,
@@ -111,10 +124,14 @@ impl Mapper for RuleBasedEventMapper {
                                     ) {
                                         return Some((Ok(ev), (input, ended)));
                                     }
+                                    // Rule matched but build_event returned None (e.g., empty content filtered)
+                                    // This is expected behavior, continue to next rule or frame
                                 }
                             }
 
-                            // If no rule matched, skip this frame
+                            // If no rule matched, skip this frame silently
+                            // This is normal for frames that don't match any event pattern
+                            // (e.g., ping frames, metadata-only frames, etc.)
                             continue;
                         }
                         Err(e) => return Some((Err(e), (input, ended))),
@@ -160,9 +177,9 @@ impl Mapper for OpenAiStyleEventMapper {
                         ) {
                             if !content.is_empty() {
                                 return Some((
-            Ok(StreamingEvent::PartialContentDelta {
-                content,
-                sequence_id: None,
+                                    Ok(StreamingEvent::PartialContentDelta {
+                                        content,
+                                        sequence_id: None,
                                     }),
                                     (input, ended),
                                 ));
@@ -174,10 +191,10 @@ impl Mapper for OpenAiStyleEventMapper {
                             crate::utils::PathMapper::get_path(&frame, "$.usage").cloned()
                         {
                             return Some((
-            Ok(StreamingEvent::Metadata {
+                                Ok(StreamingEvent::Metadata {
                                     usage: Some(usage),
-                finish_reason: None,
-                stop_reason: None,
+                                    finish_reason: None,
+                                    stop_reason: None,
                                 }),
                                 (input, ended),
                             ));
@@ -191,8 +208,8 @@ impl Mapper for OpenAiStyleEventMapper {
 
             ended = true;
             Some((
-            Ok(StreamingEvent::StreamEnd {
-                finish_reason: None,
+                Ok(StreamingEvent::StreamEnd {
+                    finish_reason: None,
                 }),
                 (input, ended),
             ))

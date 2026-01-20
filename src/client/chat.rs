@@ -206,11 +206,9 @@ impl<'a> ChatRequestBuilder<'a> {
                                     .chain(event_stream);
                                 let wrapped = ControlledStream::new(
                                     Box::pin(stream.map_err(|e| {
-                                        crate::Error::Pipeline(
-                                            crate::pipeline::PipelineError::EventMapper(
-                                                e.to_string(),
-                                            ),
-                                        )
+                                        // If it's already a crate::Error (like Transport error), preserve it.
+                                        // Otherwise, it's likely a downstream pipeline error, wrap it.
+                                        e
                                     })),
                                     Some(cancel_rx),
                                     permit,
@@ -288,13 +286,13 @@ impl<'a> ChatRequestBuilder<'a> {
         let stream_flag = self.stream;
         let client = self.client;
         let unified_req = self.into_unified_request();
-        
+
         // If streaming is not explicitly enabled, use non-streaming execution
         if !stream_flag {
             let (resp, _stats) = client.call_model_with_stats(unified_req).await?;
             return Ok(resp);
         }
-        
+
         // For streaming requests, collect all events
         // Rebuild builder for streaming execution
         let mut stream = {
@@ -323,7 +321,7 @@ impl<'a> ChatRequestBuilder<'a> {
                 StreamingEvent::ToolCallStarted {
                     tool_call_id,
                     tool_name,
-                    .. 
+                    ..
                 } => {
                     tool_asm.on_started(tool_call_id, tool_name);
                 }
@@ -348,9 +346,21 @@ impl<'a> ChatRequestBuilder<'a> {
         }
 
         if event_count == 0 {
-            tracing::warn!("No events received from stream");
+            tracing::warn!(
+                "No events received from stream. Possible causes: provider returned empty stream, \
+                 network interruption, or event mapping configuration issue. Provider: {}, Model: {}",
+                client.manifest.id,
+                client.model_id
+            );
         } else if response.content.is_empty() {
-            tracing::warn!("Received {} events but content is empty. This might indicate a non-streaming response or event mapping issue.", event_count);
+            tracing::warn!(
+                "Received {} events but content is empty. This might indicate: (1) provider filtered \
+                 content (safety/content policy), (2) non-streaming response format mismatch, \
+                 (3) event mapping issue. Provider: {}, Model: {}",
+                event_count,
+                client.manifest.id,
+                client.model_id
+            );
         }
 
         response.tool_calls = tool_asm.finalize();
@@ -371,4 +381,3 @@ impl<'a> ChatRequestBuilder<'a> {
         }
     }
 }
-

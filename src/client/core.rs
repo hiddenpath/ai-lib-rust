@@ -112,7 +112,7 @@ impl AiClient {
     }
 
     /// Create a chat request builder.
-    pub fn chat(&self) -> crate::client::chat::ChatRequestBuilder {
+    pub fn chat(&self) -> crate::client::chat::ChatRequestBuilder<'_> {
         crate::client::chat::ChatRequestBuilder::new(self)
     }
 
@@ -374,7 +374,7 @@ impl AiClient {
     /// Validate request capabilities.
     pub fn validate_request(
         &self,
-        request: &crate::client::chat::ChatRequestBuilder,
+        request: &crate::client::chat::ChatRequestBuilder<'_>,
     ) -> Result<()> {
         // Build a minimal UnifiedRequest to check capabilities via PolicyEngine
         let mut mock_req = crate::protocol::UnifiedRequest::default();

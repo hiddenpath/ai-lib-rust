@@ -51,7 +51,7 @@
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.5.0", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.5.1", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ 能力结构清单（按层次划分）
@@ -215,7 +215,7 @@ let manifest = loader.load_provider("openai").await?;
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.5.0"
+ai-lib-rust = "0.5.1"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
@@ -287,7 +287,7 @@ let (mut stream, cancel) = client.chat().messages(messages).stream().execute_str
 // cancel.cancel(); // 发出 StreamEnd{finish_reason:"cancelled"}，丢弃底层网络流，并释放并发许可
 ```
 
-## 🧾 可选反馈（选择选择）
+## 🧾 可选反馈（Choice Selection）
 
 遥测是**选择加入**的。您可以注入 `FeedbackSink` 并显式报告反馈：
 
@@ -360,6 +360,7 @@ let loader = ProtocolLoader::new().with_hot_reload(true);
 - `custom_protocol.rs`: 加载自定义协议配置
 - `list_models.rs`: 列出 provider 的可用模型
 - `service_discovery.rs`: 服务发现和自定义服务调用
+- `test_protocol_loading.rs`: 协议加载自检
 
 ## 🧪 测试
 

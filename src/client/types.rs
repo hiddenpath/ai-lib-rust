@@ -1,11 +1,11 @@
-use crate::Result;
+use crate::client::signals::SignalsSnapshot;
 use crate::types::events::StreamingEvent;
+use crate::Result;
 use futures::stream;
 use futures::stream::Stream;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::{oneshot, OwnedSemaphorePermit};
-use crate::client::signals::SignalsSnapshot;
 
 /// Per-call statistics for observability and model selection.
 #[derive(Debug, Clone, Default)]
@@ -78,7 +78,7 @@ impl Stream for ControlledStream {
         if !self.cancelled {
             if let Some(ref mut cancel_rx) = self.cancel_rx {
                 match std::future::Future::poll(Pin::new(cancel_rx), cx) {
-                    Poll::Ready(_) => {
+                    Poll::Ready(Ok(())) => {
                         self.cancel_rx = None;
                         self.cancelled = true;
                         // Strong cancellation:
@@ -89,6 +89,11 @@ impl Stream for ControlledStream {
                         return Poll::Ready(Some(Ok(StreamingEvent::StreamEnd {
                             finish_reason: Some("cancelled".to_string()),
                         })));
+                    }
+                    Poll::Ready(Err(_)) => {
+                        // Sender was dropped without sending; ignore it but log trace for debugging.
+                        tracing::trace!("ControlledStream: cancel_handle sender dropped without explicit signal; ignoring.");
+                        self.cancel_rx = None;
                     }
                     Poll::Pending => {}
                 }
@@ -111,4 +116,3 @@ impl Stream for ControlledStream {
         }
     }
 }
-

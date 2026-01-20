@@ -153,40 +153,45 @@ impl Decoder for NdjsonDecoder {
         &self,
         input: BoxStream<'static, Bytes>,
     ) -> PipeResult<BoxStream<'static, Value>> {
-        let stream = stream::unfold((input, String::new()), move |(mut input, mut buf)| async move {
-            loop {
-                if let Some(idx) = buf.find('\n') {
-                    let line = buf[..idx].trim().to_string();
-                    buf = buf[idx + 1..].to_string();
-                    if line.is_empty() {
-                        continue;
-                    }
-                    match serde_json::from_str::<Value>(&line) {
-                        Ok(v) => return Some((Ok(v), (input, buf))),
-                        Err(e) => return Some((Err(crate::Error::Serialization(e)), (input, buf))),
-                    }
-                }
-
-                match input.next().await {
-                    Some(Ok(bytes)) => {
-                        let s = String::from_utf8_lossy(&bytes);
-                        buf.push_str(&s);
-                        continue;
-                    }
-                    Some(Err(e)) => return Some((Err(e), (input, buf))),
-                    None => {
-                        let line = buf.trim();
+        let stream = stream::unfold(
+            (input, String::new()),
+            move |(mut input, mut buf)| async move {
+                loop {
+                    if let Some(idx) = buf.find('\n') {
+                        let line = buf[..idx].trim().to_string();
+                        buf = buf[idx + 1..].to_string();
                         if line.is_empty() {
-                            return None;
+                            continue;
                         }
-                        match serde_json::from_str::<Value>(line) {
-                            Ok(v) => return Some((Ok(v), (input, String::new()))),
-                            Err(_) => return None,
+                        match serde_json::from_str::<Value>(&line) {
+                            Ok(v) => return Some((Ok(v), (input, buf))),
+                            Err(e) => {
+                                return Some((Err(crate::Error::Serialization(e)), (input, buf)))
+                            }
+                        }
+                    }
+
+                    match input.next().await {
+                        Some(Ok(bytes)) => {
+                            let s = String::from_utf8_lossy(&bytes);
+                            buf.push_str(&s);
+                            continue;
+                        }
+                        Some(Err(e)) => return Some((Err(e), (input, buf))),
+                        None => {
+                            let line = buf.trim();
+                            if line.is_empty() {
+                                return None;
+                            }
+                            match serde_json::from_str::<Value>(line) {
+                                Ok(v) => return Some((Ok(v), (input, String::new()))),
+                                Err(_) => return None,
+                            }
                         }
                     }
                 }
-            }
-        });
+            },
+        );
 
         Ok(Box::pin(stream))
     }
@@ -199,8 +204,8 @@ pub fn create_decoder(cfg: &DecoderConfig) -> Result<Box<dyn Decoder>, PipelineE
         // We keep this manifest-driven and treat it as standard SSE framing.
         "anthropic_sse" => Ok(Box::new(SseDecoder::from_config(cfg)?)),
         "ndjson" | "jsonl" => Ok(Box::new(NdjsonDecoder)),
-        other => Err(PipelineError::Decoder(format!(
-            "Unsupported decoder format: {}",
+        other => Err(PipelineError::Configuration(format!(
+            "Unsupported decoder format: {}. Supported formats: sse, jsonl, ndjson",
             other
         ))),
     }

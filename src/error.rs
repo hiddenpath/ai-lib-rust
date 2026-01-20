@@ -11,6 +11,18 @@ pub struct ErrorContext {
     pub details: Option<String>,
     /// Source of the error (e.g., "protocol_loader", "request_validator")
     pub source: Option<String>,
+    /// Actionable hint or suggestion for the user
+    pub hint: Option<String>,
+    /// Request identifiers for tracking
+    pub request_id: Option<String>,
+    /// HTTP status code if applicable
+    pub status_code: Option<u16>,
+    /// Provider-specific error code
+    pub error_code: Option<String>,
+    /// Flag indicating if the error is retryable
+    pub retryable: Option<bool>,
+    /// Flag indicating if the error should trigger a fallback
+    pub fallbackable: Option<bool>,
 }
 
 impl ErrorContext {
@@ -19,6 +31,12 @@ impl ErrorContext {
             field_path: None,
             details: None,
             source: None,
+            hint: None,
+            request_id: None,
+            status_code: None,
+            error_code: None,
+            retryable: None,
+            fallbackable: None,
         }
     }
 
@@ -34,6 +52,36 @@ impl ErrorContext {
 
     pub fn with_source(mut self, source: impl Into<String>) -> Self {
         self.source = Some(source.into());
+        self
+    }
+
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
+        self.request_id = Some(id.into());
+        self
+    }
+
+    pub fn with_status_code(mut self, code: u16) -> Self {
+        self.status_code = Some(code);
+        self
+    }
+
+    pub fn with_error_code(mut self, code: impl Into<String>) -> Self {
+        self.error_code = Some(code.into());
+        self
+    }
+
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        self.retryable = Some(retryable);
+        self
+    }
+
+    pub fn with_fallbackable(mut self, fallbackable: bool) -> Self {
+        self.fallbackable = Some(fallbackable);
         self
     }
 }
@@ -81,7 +129,7 @@ pub enum Error {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("Remote error: HTTP {status} ({class}): {message}")]
+    #[error("Remote error: HTTP {status} ({class}): {message}{}", format_optional_context(.context))]
     Remote {
         status: u16,
         class: String,
@@ -89,6 +137,7 @@ pub enum Error {
         retryable: bool,
         fallbackable: bool,
         retry_after_ms: Option<u32>,
+        context: Option<ErrorContext>,
     },
 
     #[error("Unknown error: {message}{}", format_context(.context))]
@@ -110,11 +159,37 @@ fn format_context(ctx: &ErrorContext) -> String {
     if let Some(ref source) = ctx.source {
         parts.push(format!("source: {}", source));
     }
-    if parts.is_empty() {
+    if let Some(ref id) = ctx.request_id {
+        parts.push(format!("request_id: {}", id));
+    }
+    if let Some(code) = ctx.status_code {
+        parts.push(format!("status: {}", code));
+    }
+    if let Some(ref code) = ctx.error_code {
+        parts.push(format!("error_code: {}", code));
+    }
+    if let Some(retryable) = ctx.retryable {
+        parts.push(format!("retryable: {}", retryable));
+    }
+    if let Some(fallbackable) = ctx.fallbackable {
+        parts.push(format!("fallbackable: {}", fallbackable));
+    }
+
+    let ctx_str = if parts.is_empty() {
         String::new()
     } else {
-        format!(" ({})", parts.join(", "))
+        format!(" [{}]", parts.join(", "))
+    };
+
+    if let Some(ref hint) = ctx.hint {
+        format!("{}\n💡 Hint: {}", ctx_str, hint)
+    } else {
+        ctx_str
     }
+}
+
+fn format_optional_context(ctx: &Option<ErrorContext>) -> String {
+    ctx.as_ref().map(format_context).unwrap_or_default()
 }
 
 impl Error {
@@ -157,8 +232,38 @@ impl Error {
             | Error::Validation { context, .. }
             | Error::Runtime { context, .. }
             | Error::Unknown { context, .. } => Some(context),
+            Error::Remote {
+                context: Some(ref c), ..
+            } => Some(c),
             _ => None,
         }
+    }
+
+    /// Attach or update context to the error
+    pub fn with_context(mut self, new_ctx: ErrorContext) -> Self {
+        match &mut self {
+            Error::Configuration {
+                ref mut context, ..
+            }
+            | Error::Validation {
+                ref mut context, ..
+            }
+            | Error::Runtime {
+                ref mut context, ..
+            }
+            | Error::Unknown {
+                ref mut context, ..
+            } => {
+                *context = new_ctx;
+            }
+            Error::Remote {
+                ref mut context, ..
+            } => {
+                *context = Some(new_ctx);
+            }
+            _ => {}
+        }
+        self
     }
 }
 

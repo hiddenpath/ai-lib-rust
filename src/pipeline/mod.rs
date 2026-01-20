@@ -68,8 +68,39 @@ pub enum PipelineError {
     #[error("Event mapper error: {0}")]
     EventMapper(String),
 
-    #[error("Pipeline configuration error: {0}")]
+    #[error("Configuration error: {0}")]
     Configuration(String),
+
+    #[error("Missing required field: {name}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    MissingField { name: String, hint: Option<String> },
+
+    #[error("Invalid JSON path: {path} - {error}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    InvalidJsonPath {
+        path: String,
+        error: String,
+        hint: Option<String>,
+    },
+
+    #[error("Operator execution failed: {operator} - {reason}{}", .hint.as_ref().map(|h| format!("\n💡 Hint: {}", h)).unwrap_or_default())]
+    Execution {
+        operator: String,
+        reason: String,
+        hint: Option<String>,
+    },
+}
+
+impl PipelineError {
+    /// Attach an actionable hint to the error
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        let hint_val = Some(hint.into());
+        match self {
+            PipelineError::MissingField { ref mut hint, .. } => *hint = hint_val,
+            PipelineError::InvalidJsonPath { ref mut hint, .. } => *hint = hint_val,
+            PipelineError::Execution { ref mut hint, .. } => *hint = hint_val,
+            _ => (),
+        }
+        self
+    }
 }
 
 /// Pipeline builder that constructs the operator chain from protocol manifest

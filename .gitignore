@@ -10,6 +10,8 @@
 # Logs and temporary files
 *.log
 build_error.log
+check_output*.txt
+error.txt
 
 # Work / internal documents (do not publish)
 *REPORT*.md

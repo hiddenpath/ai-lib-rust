@@ -1,20 +1,22 @@
 [package]
 name = "ai-lib-rust"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
 description = "Protocol Runtime for AI-Protocol - A high-performance Rust reference implementation"
 repository = "https://github.com/hiddenpath/ai-lib-rust"
 readme = "README.md"
-rust-version = "1.70"
+rust-version = "1.75"
 keywords = ["ai", "llm", "streaming", "protocol", "openai"]
 categories = ["api-bindings", "network-programming", "asynchronous"]
 
-# Prevent publishing internal/work files and reports in the crate package.
+# 发布时仅包含下列文件；工作文档、内部文档、临时文件（如 docs/runtime_features.md、
+# ROBUSTNESS_IMPROVEMENTS.md、*.txt 等）未列入，不会随 crate 发布。
 include = [
   "Cargo.toml",
   "README.md",
+  "README_CN.md",
   "docs/ARCHITECTURE.md",
   "CHANGELOG.md",
   "LICENSE-APACHE",
