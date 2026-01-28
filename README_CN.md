@@ -51,7 +51,7 @@
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.0", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.5", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ 能力结构清单（按层次划分）
@@ -93,11 +93,41 @@ ai-lib-rust = { version = "0.6.0", features = ["routing_mvp", "interceptors"] }
 
 ### 7）Telemetry 层（`src/telemetry/`）
 - **`FeedbackSink` / `FeedbackEvent`**：可选的反馈上报能力（opt-in）
+- **扩展反馈类型**：`RatingFeedback`、`ThumbsFeedback`、`TextFeedback`、`CorrectionFeedback`、`RegenerateFeedback`、`StopFeedback`
+- **多种 Sink**：`InMemoryFeedbackSink`、`ConsoleFeedbackSink`、`CompositeFeedbackSink`
+- **全局 Sink 管理**：`get_feedback_sink()`、`set_feedback_sink()`、`report_feedback()`
 
-### 8）工具层（`src/utils/`）
+### 8）Embedding 层（`src/embeddings/`）- v0.6.5 新增
+- **`EmbeddingClient` / `EmbeddingClientBuilder`**：从文本生成嵌入向量
+- **类型**：`Embedding`、`EmbeddingRequest`、`EmbeddingResponse`、`EmbeddingUsage`
+- **向量运算**：`cosine_similarity`、`dot_product`、`euclidean_distance`、`manhattan_distance`
+- **工具函数**：`normalize_vector`、`average_vectors`、`weighted_average_vectors`、`find_most_similar`
+
+### 9）Cache 层（`src/cache/`）- v0.6.5 新增
+- **`CacheBackend`** trait：`MemoryCache` 和 `NullCache` 实现
+- **`CacheManager`**：基于 TTL 的缓存管理，支持统计
+- **`CacheKey` / `CacheKeyGenerator`**：确定性缓存键生成
+
+### 10）Token 层（`src/tokens/`）- v0.6.5 新增
+- **`TokenCounter`** trait：`CharacterEstimator`、`AnthropicEstimator`、`CachingCounter`
+- **`ModelPricing`**：预配置 GPT-4o、Claude 等模型定价
+- **`CostEstimate`**：请求成本估算
+
+### 11）Batch 层（`src/batch/`）- v0.6.5 新增
+- **`BatchCollector` / `BatchConfig`**：请求收集与批处理配置
+- **`BatchExecutor`**：可配置策略的批量执行器
+- **`BatchResult`**：结构化的批量执行结果
+
+### 12）Plugin 层（`src/plugins/`）- v0.6.5 新增
+- **`Plugin`** trait：带生命周期钩子的插件接口
+- **`PluginRegistry`**：集中式插件管理
+- **钩子系统**：`HookType`、`Hook`、`HookManager`
+- **中间件**：`Middleware`、`MiddlewareChain` 用于请求/响应转换
+
+### 13）工具层（`src/utils/`）
 - JSONPath/路径映射、tool-call assembler 等运行时小工具
 
-### 9）可选上层工具（feature-gated）
+### 14）可选上层工具（feature-gated）
 - **`routing_mvp`**（`src/routing/`）：模型选择 + endpoint array 负载均衡（纯逻辑）
 - **`interceptors`**（`src/interceptors/`）：调用前后钩子（日志/指标/审计）
 
@@ -215,7 +245,7 @@ let manifest = loader.load_provider("openai").await?;
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.0"
+ai-lib-rust = "0.6.5"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```

@@ -51,7 +51,7 @@ Enable with:
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.0", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.5", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -93,11 +93,41 @@ This is a structured view of what the crate provides, grouped by layers.
 
 ### 7) Telemetry layer (`src/telemetry/`)
 - **`FeedbackSink`** / **`FeedbackEvent`**: opt-in feedback reporting
+- **Extended feedback types**: `RatingFeedback`, `ThumbsFeedback`, `TextFeedback`, `CorrectionFeedback`, `RegenerateFeedback`, `StopFeedback`
+- **Multiple sinks**: `InMemoryFeedbackSink`, `ConsoleFeedbackSink`, `CompositeFeedbackSink`
+- **Global sink management**: `get_feedback_sink()`, `set_feedback_sink()`, `report_feedback()`
 
-### 8) Utils (`src/utils/`)
+### 8) Embedding layer (`src/embeddings/`) - NEW in v0.6.5
+- **`EmbeddingClient`** / **`EmbeddingClientBuilder`**: Generate embeddings from text
+- **Types**: `Embedding`, `EmbeddingRequest`, `EmbeddingResponse`, `EmbeddingUsage`
+- **Vector operations**: `cosine_similarity`, `dot_product`, `euclidean_distance`, `manhattan_distance`
+- **Utilities**: `normalize_vector`, `average_vectors`, `weighted_average_vectors`, `find_most_similar`
+
+### 9) Cache layer (`src/cache/`) - NEW in v0.6.5
+- **`CacheBackend`** trait with `MemoryCache` and `NullCache` implementations
+- **`CacheManager`**: TTL-based caching with statistics
+- **`CacheKey`** / **`CacheKeyGenerator`**: Deterministic cache key generation
+
+### 10) Token layer (`src/tokens/`) - NEW in v0.6.5
+- **`TokenCounter`** trait: `CharacterEstimator`, `AnthropicEstimator`, `CachingCounter`
+- **`ModelPricing`**: Pre-configured pricing for GPT-4o, Claude models
+- **`CostEstimate`**: Calculate request costs
+
+### 11) Batch layer (`src/batch/`) - NEW in v0.6.5
+- **`BatchCollector`** / **`BatchConfig`**: Accumulate requests for batch processing
+- **`BatchExecutor`**: Execute batches with configurable strategies
+- **`BatchResult`**: Structured batch execution results
+
+### 12) Plugin layer (`src/plugins/`) - NEW in v0.6.5
+- **`Plugin`** trait with lifecycle hooks
+- **`PluginRegistry`**: Centralized plugin management
+- **Hook system**: `HookType`, `Hook`, `HookManager`
+- **Middleware**: `Middleware`, `MiddlewareChain` for request/response transformation
+
+### 13) Utils (`src/utils/`)
 - JSONPath mapping helpers, tool-call assembler, and small runtime utilities
 
-### 9) Optional helpers (feature-gated)
+### 14) Optional helpers (feature-gated)
 - **`routing_mvp`** (`src/routing/`): model selection + endpoint array load balancing (pure logic)
 - **`interceptors`** (`src/interceptors/`): hooks around calls for logging/metrics/audit
 
@@ -183,7 +213,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.0"
+ai-lib-rust = "0.6.5"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
