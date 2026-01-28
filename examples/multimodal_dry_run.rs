@@ -1,6 +1,6 @@
-use ai_lib_rust::{AiClient, Message, MessageRole};
-use ai_lib_rust::types::message::{MessageContent, ContentBlock};
 use ai_lib_rust::protocol::UnifiedRequest;
+use ai_lib_rust::types::message::{ContentBlock, MessageContent};
+use ai_lib_rust::{AiClient, Message, MessageRole};
 
 fn fake_b64() -> String {
     // Intentionally tiny placeholder payload for examples.
@@ -39,7 +39,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let deepseek = AiClient::new("deepseek/deepseek-chat").await?;
     let deepseek_res = deepseek
         .chat()
-        .messages(vec![Message::system("You are a helpful assistant."), image_msg.clone()])
+        .messages(vec![
+            Message::system("You are a helpful assistant."),
+            image_msg.clone(),
+        ])
         .execute()
         .await;
     println!("DeepSeek image request result: {deepseek_res:?}");
@@ -48,7 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let openai = AiClient::new("openai/gpt-4o").await?;
     let openai_audio_res = openai
         .chat()
-        .messages(vec![Message::system("You are a helpful assistant."), audio_msg.clone()])
+        .messages(vec![
+            Message::system("You are a helpful assistant."),
+            audio_msg.clone(),
+        ])
         .execute()
         .await;
     println!("OpenAI audio request result: {openai_audio_res:?}");
@@ -58,7 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let openai_unified = UnifiedRequest {
         operation: "chat".to_string(),
         model: "gpt-4o".to_string(),
-        messages: vec![Message::system("You are a helpful assistant."), image_msg.clone()],
+        messages: vec![
+            Message::system("You are a helpful assistant."),
+            image_msg.clone(),
+        ],
         temperature: None,
         max_tokens: Some(128),
         stream: false,
@@ -95,4 +104,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

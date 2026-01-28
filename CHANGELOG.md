@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.0 - 2026-01-27
+
+### Added
+- **Dist JSON 快路径（零额外解析成本）**：`ProtocolLoader` 优先从 `dist/v1/providers/*.json` 加载 provider manifest（本地与远程 URL 均支持），在不改变对外 API 的前提下提升加载速度与稳定性。
+- **JSON model registry 支持**：模型注册表加载支持 `dist/v1/models/*.json` 与 `v1/models/*.yaml|yml` 混合存在的场景。
+
+### Changed
+- **加载顺序更稳健**：provider manifest 搜索顺序调整为 `dist JSON → source YAML → GitHub raw（JSON→YAML）`，保持向后兼容并减少“找不到文件”的误判。
+- **更清晰的错误分类**：YAML 解析失败时区分“语法/编码问题”和“结构不匹配（缺字段/类型不符）”，便于定位问题来源。
+
 ## 0.5.1 - 2026-01-20
 
 ### Fixed

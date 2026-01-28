@@ -31,9 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let loader = ProtocolLoader::new().with_base_path(&protocol_dir);
 
     // Validate all provider manifests
-    let providers = vec![
-        "openai", "anthropic", "gemini", "deepseek", "groq", "qwen",
-    ];
+    let providers = vec!["openai", "anthropic", "gemini", "deepseek", "groq", "qwen"];
 
     let mut errors = Vec::new();
 
@@ -58,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .filter(|e| {
                 e.path()
                     .extension()
-                    .map(|ext| ext == "yaml" || ext == "yml")
+                    .map(|ext| ext == "yaml" || ext == "yml" || ext == "json")
                     .unwrap_or(false)
             })
             .collect::<Vec<_>>();
@@ -72,11 +70,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // For now, we just check if it's valid YAML and can be parsed
             match std::fs::read_to_string(entry.path()) {
                 Ok(content) => {
-                    match serde_yaml::from_str::<serde_json::Value>(&content) {
+                    let is_json = entry.path().extension().map_or(false, |e| e == "json");
+                    let result = if is_json {
+                        serde_json::from_str::<serde_json::Value>(&content)
+                            .map_err(|e| e.to_string())
+                    } else {
+                        serde_yaml::from_str::<serde_json::Value>(&content)
+                            .map_err(|e| e.to_string())
+                    };
+
+                    match result {
                         Ok(_) => println!("✅"),
                         Err(e) => {
                             println!("❌");
-                            errors.push(format!("  {}: Invalid YAML: {}", file_name_str, e));
+                            errors.push(format!(
+                                "  {}: Invalid {}: {}",
+                                file_name_str,
+                                if is_json { "JSON" } else { "YAML" },
+                                e
+                            ));
                         }
                     }
                 }

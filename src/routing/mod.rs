@@ -282,13 +282,15 @@ impl CustomModelManager {
                 speed_score + quality_score
             }),
             ModelSelectionStrategy::LeastConnections => self.models.values().next(),
-            ModelSelectionStrategy::PerformanceBased => self.models.values().max_by_key(|model| {
-                match model.performance.speed {
-                    SpeedTier::Fast => 3,
-                    SpeedTier::Balanced => 2,
-                    SpeedTier::Slow => 1,
-                }
-            }),
+            ModelSelectionStrategy::PerformanceBased => {
+                self.models
+                    .values()
+                    .max_by_key(|model| match model.performance.speed {
+                        SpeedTier::Fast => 3,
+                        SpeedTier::Balanced => 2,
+                        SpeedTier::Slow => 1,
+                    })
+            }
             ModelSelectionStrategy::CostBased => self.models.values().min_by(|a, b| {
                 let a_cost = a.pricing.input_cost_per_1k + a.pricing.output_cost_per_1k;
                 let b_cost = b.pricing.input_cost_per_1k + b.pricing.output_cost_per_1k;
@@ -472,4 +474,3 @@ impl ModelArray {
         self.endpoints.iter().any(|endpoint| endpoint.healthy)
     }
 }
-

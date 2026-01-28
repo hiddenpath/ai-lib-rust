@@ -233,7 +233,8 @@ impl Error {
             | Error::Runtime { context, .. }
             | Error::Unknown { context, .. } => Some(context),
             Error::Remote {
-                context: Some(ref c), ..
+                context: Some(ref c),
+                ..
             } => Some(c),
             _ => None,
         }

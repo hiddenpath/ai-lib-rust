@@ -11,8 +11,8 @@
 //! Run:
 //!   DEEPSEEK_API_KEY=your_key cargo run --example deepseek_tool_call_stream
 
+use ai_lib_rust::types::tool::{FunctionDefinition, ToolDefinition};
 use ai_lib_rust::{AiClient, Message};
-use ai_lib_rust::types::tool::{ToolDefinition, FunctionDefinition};
 
 fn web_search_tool() -> ToolDefinition {
     ToolDefinition {

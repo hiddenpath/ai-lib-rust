@@ -1,7 +1,7 @@
 //! Manifest validation
 
-use crate::{Error, ErrorContext, Result};
 use crate::protocol::ProtocolManifest;
+use crate::{Error, ErrorContext, Result};
 
 /// Runtime-supported protocol versions
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["1.1", "1.5"];
@@ -11,7 +11,7 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["1.1", "1.5"];
 /// This ensures the runtime can handle the protocol version specified in the manifest.
 fn validate_protocol_version(manifest: &ProtocolManifest) -> Result<()> {
     let version = &manifest.protocol_version;
-    
+
     if !SUPPORTED_PROTOCOL_VERSIONS.contains(&version.as_str()) {
         return Err(Error::validation_with_context(
             format!(
@@ -23,7 +23,7 @@ fn validate_protocol_version(manifest: &ProtocolManifest) -> Result<()> {
                 .with_source("version_validator"),
         ));
     }
-    
+
     Ok(())
 }
 
@@ -31,13 +31,10 @@ fn validate_protocol_version(manifest: &ProtocolManifest) -> Result<()> {
 ///
 /// When `strict_streaming` is enabled, this performs fail-fast checks for streaming config
 /// completeness to avoid ambiguous runtime behavior.
-pub(crate) fn validate_manifest(
-    manifest: &ProtocolManifest,
-    strict_streaming: bool,
-) -> Result<()> {
+pub(crate) fn validate_manifest(manifest: &ProtocolManifest, strict_streaming: bool) -> Result<()> {
     // Contract validation: Check protocol version compatibility
     validate_protocol_version(manifest)?;
-    
+
     if !strict_streaming {
         return Ok(());
     }

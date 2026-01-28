@@ -10,9 +10,9 @@
 pub mod client;
 pub mod pipeline;
 pub mod protocol;
+pub mod resilience;
 pub mod telemetry;
 pub mod transport;
-pub mod resilience;
 pub mod types;
 pub mod utils;
 
@@ -24,10 +24,10 @@ pub mod interceptors;
 
 // Re-export main types for convenience
 pub use client::CallStats;
-pub use client::{AiClient, AiClientBuilder};
 pub use client::CancelHandle;
 pub use client::ChatBatchRequest;
 pub use client::EndpointExt;
+pub use client::{AiClient, AiClientBuilder};
 pub use telemetry::{FeedbackEvent, FeedbackSink};
 pub use types::{
     events::StreamingEvent,

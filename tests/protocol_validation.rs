@@ -13,7 +13,11 @@ async fn test_valid_provider_manifest() {
 
     // Test loading a known valid provider
     let result = loader.load_provider("openai").await;
-    assert!(result.is_ok(), "OpenAI manifest should be valid: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "OpenAI manifest should be valid: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]

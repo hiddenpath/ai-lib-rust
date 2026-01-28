@@ -99,86 +99,132 @@ impl ProtocolLoader {
         provider_id: &str,
     ) -> Result<ProtocolManifest, ProtocolError> {
         // Try multiple sources in order:
-        // 1. Local file system (if base_path is set)
-        // 2. GitHub URL (if AI_PROTOCOL_DIR is a URL)
-        // 3. Local file system (default paths)
-        // 4. Embedded assets (future: compile-time inclusion)
+        // 1. Local file system (dist JSON) - PREFERRED
+        // 2. Local file system (source YAML) - FALLBACK
+        // 3. GitHub URL (if AI_PROTOCOL_DIR is a URL)
+        // 4. Embedded assets (future)
 
+        // Path prioritization helper
+        let mut search_locations: Vec<(PathBuf, bool)> = Vec::new(); // (path_base, is_json_preferred)
+
+        // 1. Check user-configured base_path
         if let Some(ref base_path) = self.base_path {
-            let provider_path = base_path
-                .join("v1")
-                .join("providers")
-                .join(format!("{}.yaml", provider_id));
-
-            if provider_path.exists() {
-                return self.load_from_file(&provider_path).await;
-            }
+            // Priority 1: dist/v1/providers/{id}.json
+            search_locations.push((base_path.join("dist").join("v1").join("providers"), true));
+            // Priority 2: v1/providers/{id}.yaml
+            search_locations.push((base_path.join("v1").join("providers"), false));
         }
 
-        // Check if AI_PROTOCOL_DIR is a GitHub URL
+        // 2. Check AI_PROTOCOL_DIR Env Var
         if let Ok(root) =
             std::env::var("AI_PROTOCOL_DIR").or_else(|_| std::env::var("AI_PROTOCOL_PATH"))
         {
-            // Check if it's a URL (starts with http:// or https://)
             if root.starts_with("http://") || root.starts_with("https://") {
-                // Construct GitHub raw URL for provider manifest
+                // Handling URL sources (Remote)
+                // Try JSON first if it looks like a raw github url, but typically raw github urls are specific.
+                // For simplicity, we stick to the existing logic for URLs but could enhance later to try .json
                 let url = if root.ends_with('/') {
+                    format!("{}dist/v1/providers/{}.json", root, provider_id)
+                } else {
+                    format!("{}/dist/v1/providers/{}.json", root, provider_id)
+                };
+
+                // Try JSON from remote
+                if let Ok(manifest) = self.load_from_json_url(&url).await {
+                    return Ok(manifest);
+                }
+
+                // Fallback to YAML from remote
+                let url_yaml = if root.ends_with('/') {
                     format!("{}v1/providers/{}.yaml", root, provider_id)
                 } else {
                     format!("{}/v1/providers/{}.yaml", root, provider_id)
                 };
-                return self.load_from_url(&url).await;
-            }
-        }
-
-        // Default search paths (local file system):
-        // - env `AI_PROTOCOL_DIR` / `AI_PROTOCOL_PATH` pointing to the ai-protocol repo root
-        // - relative paths for submodule/sibling setups
-        // - (dev convenience) `D:\ai-protocol\...` if present
-        let mut default_paths: Vec<PathBuf> = Vec::new();
-        if let Ok(root) =
-            std::env::var("AI_PROTOCOL_DIR").or_else(|_| std::env::var("AI_PROTOCOL_PATH"))
-        {
-            // Only add if it's not a URL (already handled above)
-            if !root.starts_with("http://") && !root.starts_with("https://") {
+                return self.load_from_url(&url_yaml).await;
+            } else {
+                // Local Path from Env
                 let root = PathBuf::from(root);
-                default_paths.push(root.join("v1").join("providers"));
-            }
-        }
-        default_paths.push(PathBuf::from("ai-protocol/v1/providers"));
-        default_paths.push(PathBuf::from("../ai-protocol/v1/providers"));
-        default_paths.push(PathBuf::from("../../ai-protocol/v1/providers"));
-        let win_dev = PathBuf::from("D:\\ai-protocol\\v1\\providers");
-        if win_dev.exists() {
-            default_paths.push(win_dev);
-        }
-
-        for base in default_paths {
-            let provider_path = base.join(format!("{}.yaml", provider_id));
-            if provider_path.exists() {
-                return self.load_from_file(&provider_path).await;
+                search_locations.push((root.join("dist").join("v1").join("providers"), true));
+                search_locations.push((root.join("v1").join("providers"), false));
             }
         }
 
-        // Last resort: try GitHub raw URL (canonical source)
-        let github_url = format!(
+        // 3. Default dev locations
+        let default_roots = vec![
+            PathBuf::from("ai-protocol"),
+            PathBuf::from("../ai-protocol"),
+            PathBuf::from("../../ai-protocol"),
+            PathBuf::from("D:\\ai-protocol"),
+        ];
+
+        for root in default_roots {
+            search_locations.push((root.join("dist").join("v1").join("providers"), true));
+            search_locations.push((root.join("v1").join("providers"), false));
+        }
+
+        // Execute Search
+        for (base, prefer_json) in search_locations {
+            if prefer_json {
+                let json_path = base.join(format!("{}.json", provider_id));
+                if json_path.exists() {
+                    return self.load_from_json_file(&json_path).await;
+                }
+            } else {
+                let yaml_path = base.join(format!("{}.yaml", provider_id));
+                if yaml_path.exists() {
+                    return self.load_from_file(&yaml_path).await;
+                }
+            }
+        }
+
+        // Last resort: try GitHub raw URL (canonical source) - JSON
+        let github_json = format!(
+            "https://raw.githubusercontent.com/hiddenpath/ai-protocol/main/dist/v1/providers/{}.json",
+            provider_id
+        );
+        if let Ok(manifest) = self.load_from_json_url(&github_json).await {
+            return Ok(manifest);
+        }
+
+        // Last resort fallback: YAML
+        let github_yaml = format!(
             "https://raw.githubusercontent.com/hiddenpath/ai-protocol/main/v1/providers/{}.yaml",
             provider_id
         );
-        if let Ok(manifest) = self.load_from_url(&github_url).await {
+        if let Ok(manifest) = self.load_from_url(&github_yaml).await {
             return Ok(manifest);
         }
 
         Err(ProtocolError::NotFound {
             id: provider_id.to_string(),
             hint: Some(format!(
-                "Check if the provider file '{}.yaml' exists in your protocol directory",
-                provider_id
+                "Check if the provider file '{}.json' or '{}.yaml' exists in your protocol directory",
+                provider_id, provider_id
             )),
         })
     }
 
-    /// Load protocol from local file
+    /// Load protocol from local JSON file (Fast Path)
+    async fn load_from_json_file(&self, path: &Path) -> Result<ProtocolManifest, ProtocolError> {
+        let content = tokio::fs::read(path)
+            .await
+            .map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: e.to_string(),
+                hint: Some("Check file permissions.".to_string()),
+            })?;
+
+        let manifest: ProtocolManifest = serde_json::from_slice(&content)
+            .map_err(|e| ProtocolError::ValidationError(format!("Invalid JSON manifest: {}", e)))?;
+
+        // Validate against JSON Schema (Optional but recommended even for dist)
+        // For max speed, we might skip this in release, but keeping for safety now.
+        self.validator.validate(&manifest)?;
+
+        Ok(manifest)
+    }
+
+    /// Load protocol from local YAML file (Legacy/Dev Path)
     async fn load_from_file(&self, path: &Path) -> Result<ProtocolManifest, ProtocolError> {
         // Read as bytes first to handle different encodings
         let bytes = tokio::fs::read(path)
@@ -189,11 +235,10 @@ impl ProtocolLoader {
                 hint: Some("Check if the file exists and you have read permissions.".to_string()),
             })?;
 
-        // Detect encoding and convert to UTF-8 string
+        // ... (encoding detection remains same)
         let content = if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
             // UTF-16 LE with BOM
             let utf16_bytes = &bytes[2..];
-            // Convert UTF-16 LE bytes to u16 array
             let mut utf16_chars = Vec::new();
             for i in (0..utf16_bytes.len()).step_by(2) {
                 if i + 1 < utf16_bytes.len() {
@@ -203,41 +248,67 @@ impl ProtocolLoader {
             }
             String::from_utf16(&utf16_chars).map_err(|e| ProtocolError::LoadError {
                 path: path.to_string_lossy().to_string(),
-                reason: format!(
-                    "Invalid UTF-16: {}. Please convert the file to UTF-8 encoding.",
-                    e
-                ),
-                hint: Some(
-                    "The runtime expects UTF-8 manifests. Try converting the file encoding."
-                        .to_string(),
-                ),
+                reason: format!("Invalid UTF-16: {}", e),
+                hint: None,
             })?
         } else if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
-            // UTF-8 with BOM, skip BOM
             String::from_utf8(bytes[3..].to_vec()).map_err(|e| ProtocolError::LoadError {
                 path: path.to_string_lossy().to_string(),
                 reason: format!("Invalid UTF-8 (after BOM): {}", e),
-                hint: Some(
-                    "Remove Byte Order Mark (BOM) and ensure the file is valid UTF-8.".to_string(),
-                ),
+                hint: None,
             })?
         } else {
-            // Regular UTF-8 (no BOM)
             String::from_utf8(bytes).map_err(|e| ProtocolError::LoadError {
                 path: path.to_string_lossy().to_string(),
-                reason: format!(
-                    "Invalid UTF-8: {}. Please convert the file to UTF-8 encoding.",
-                    e
-                ),
-                hint: Some("Verify the file content is valid UTF-8.".to_string()),
+                reason: format!("Invalid UTF-8: {}", e),
+                hint: None,
             })?
         };
 
         let manifest: ProtocolManifest = Self::parse_manifest_yaml(&content)?;
-
-        // Validate against JSON Schema
         self.validator.validate(&manifest)?;
+        Ok(manifest)
+    }
 
+    /// Load protocol from remote JSON URL
+    async fn load_from_json_url(&self, url: &str) -> Result<ProtocolManifest, ProtocolError> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| ProtocolError::Internal(format!("Failed to create HTTP client: {}", e)))?;
+
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!("HTTP request failed: {}", e),
+                hint: None,
+            })?;
+
+        if !response.status().is_success() {
+            return Err(ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!("HTTP {}", response.status()),
+                hint: None,
+            });
+        }
+
+        let content = response
+            .bytes()
+            .await
+            .map_err(|e| ProtocolError::LoadError {
+                path: url.to_string(),
+                reason: format!("Failed to read bytes: {}", e),
+                hint: None,
+            })?;
+
+        let manifest: ProtocolManifest = serde_json::from_slice(&content).map_err(|e| {
+            ProtocolError::ValidationError(format!("Invalid JSON manifest from URL: {}", e))
+        })?;
+
+        self.validator.validate(&manifest)?;
         Ok(manifest)
     }
 
@@ -317,23 +388,39 @@ impl ProtocolLoader {
 
     /// Load model configuration from registry
     async fn load_model_config(&self, model_name: &str) -> Result<ModelConfig, ProtocolError> {
-        // Try to find model in v1/models/ directory, scanning all `*.yaml` registries.
-        let mut model_paths: Vec<PathBuf> = Vec::new();
+        // Try to find model, scanning registries.
+        // Priority: dist/v1/models/*.json -> v1/models/*.yaml
+
+        let mut search_locations: Vec<(PathBuf, bool)> = Vec::new(); // (path_base, is_json_preferred)
+
+        // 1. Env Var AI_PROTOCOL_DIR
         if let Ok(root) =
             std::env::var("AI_PROTOCOL_DIR").or_else(|_| std::env::var("AI_PROTOCOL_PATH"))
         {
-            let root = PathBuf::from(root);
-            model_paths.push(root.join("v1").join("models"));
-        }
-        model_paths.push(PathBuf::from("ai-protocol/v1/models"));
-        model_paths.push(PathBuf::from("../ai-protocol/v1/models"));
-        model_paths.push(PathBuf::from("../../ai-protocol/v1/models"));
-        let win_dev = PathBuf::from("D:\\ai-protocol\\v1\\models");
-        if win_dev.exists() {
-            model_paths.push(win_dev);
+            // If HTTP, skipped here as typically model config loading implies local or full repo clone access.
+            // If we really need remote model loading, we'd need a different strategy (scanning a remote index).
+            // For now, assume local model registry for this heuristic.
+            if !root.starts_with("http://") && !root.starts_with("https://") {
+                let root = PathBuf::from(root);
+                search_locations.push((root.join("dist").join("v1").join("models"), true));
+                search_locations.push((root.join("v1").join("models"), false));
+            }
         }
 
-        for base in model_paths {
+        // 2. Default paths
+        let default_roots = vec![
+            PathBuf::from("ai-protocol"),
+            PathBuf::from("../ai-protocol"),
+            PathBuf::from("../../ai-protocol"),
+            PathBuf::from("D:\\ai-protocol"),
+        ];
+
+        for root in default_roots {
+            search_locations.push((root.join("dist").join("v1").join("models"), true));
+            search_locations.push((root.join("v1").join("models"), false));
+        }
+
+        for (base, prefer_json) in search_locations {
             if !base.exists() {
                 continue;
             }
@@ -341,19 +428,34 @@ impl ProtocolLoader {
                 Ok(rd) => rd,
                 Err(_) => continue,
             };
+
             while let Ok(Some(entry)) = rd.next_entry().await {
                 let path = entry.path();
-                if path
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.eq_ignore_ascii_case("yaml") || s.eq_ignore_ascii_case("yml"))
-                    != Some(true)
-                {
+                let extension = path.extension().and_then(|s| s.to_str());
+
+                let is_match = if prefer_json {
+                    extension.map(|s| s.eq_ignore_ascii_case("json")) == Some(true)
+                } else {
+                    extension
+                        .map(|s| s.eq_ignore_ascii_case("yaml") || s.eq_ignore_ascii_case("yml"))
+                        == Some(true)
+                };
+
+                if !is_match {
                     continue;
                 }
-                if let Ok(config) = self.load_model_registry(&path).await {
-                    if let Some(model) = config.models.get(model_name) {
-                        return Ok(model.clone());
+
+                if prefer_json {
+                    if let Ok(config) = self.load_model_registry_json(&path).await {
+                        if let Some(model) = config.models.get(model_name) {
+                            return Ok(model.clone());
+                        }
+                    }
+                } else {
+                    if let Ok(config) = self.load_model_registry_yaml(&path).await {
+                        if let Some(model) = config.models.get(model_name) {
+                            return Ok(model.clone());
+                        }
                     }
                 }
             }
@@ -368,7 +470,21 @@ impl ProtocolLoader {
         })
     }
 
-    async fn load_model_registry(&self, path: &Path) -> Result<ModelRegistry, ProtocolError> {
+    async fn load_model_registry_json(&self, path: &Path) -> Result<ModelRegistry, ProtocolError> {
+        let content = tokio::fs::read(path)
+            .await
+            .map_err(|e| ProtocolError::LoadError {
+                path: path.to_string_lossy().to_string(),
+                reason: e.to_string(),
+                hint: None,
+            })?;
+        let registry: ModelRegistry = serde_json::from_slice(&content).map_err(|e| {
+            ProtocolError::ValidationError(format!("Invalid JSON model registry: {}", e))
+        })?;
+        Ok(registry)
+    }
+
+    async fn load_model_registry_yaml(&self, path: &Path) -> Result<ModelRegistry, ProtocolError> {
         let content =
             tokio::fs::read_to_string(path)
                 .await

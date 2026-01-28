@@ -61,7 +61,6 @@ fn test_non_fallbackable_error_classes() {
     }
 }
 
-
 #[test]
 fn test_error_class_standard_compliance() {
     // Verify that all error classes used in the code match the spec.yaml standard
@@ -83,5 +82,9 @@ fn test_error_class_standard_compliance() {
 
     // This test ensures we're using standard error classes
     // In practice, we would verify against the actual spec.yaml
-    assert_eq!(standard_classes.len(), 13, "Should have 13 standard error classes");
+    assert_eq!(
+        standard_classes.len(),
+        13,
+        "Should have 13 standard error classes"
+    );
 }

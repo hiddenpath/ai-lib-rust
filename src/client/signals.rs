@@ -18,4 +18,3 @@ pub struct InflightSnapshot {
     pub available: usize,
     pub in_use: usize,
 }
-

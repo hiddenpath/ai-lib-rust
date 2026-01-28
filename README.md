@@ -8,7 +8,7 @@
 
 Unlike traditional adapter libraries that hardcode provider-specific logic, `ai-lib-rust` is a **protocol-driven runtime** that executes AI-Protocol specifications. This means:
 
-- **Zero hardcoded provider logic**: All behavior is driven by YAML protocol files
+- **Zero hardcoded provider logic**: All behavior is driven by protocol manifests (source YAML or dist JSON)
 - **Operator-based architecture**: Processing is done through composable operators (Decoder → Selector → Accumulator → FanOut → EventMapper)
 - **Hot-reloadable**: Protocol configurations can be updated without restarting the application
 - **Unified interface**: Developers interact with a single, consistent API regardless of the underlying provider
@@ -51,7 +51,7 @@ Enable with:
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.5.1", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.0", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -183,21 +183,24 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.5.1"
+ai-lib-rust = "0.6.0"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
 
 ## 🔧 Configuration
 
-The library automatically looks for protocol files in the following locations (in order):
+The library automatically looks for protocol manifests in the following locations (in order):
 
 1. Custom path set via `ProtocolLoader::with_base_path()`
-2. `ai-protocol/` subdirectory (Git submodule)
-3. `../ai-protocol/` (sibling directory)
-4. `../../ai-protocol/` (parent's sibling)
+2. `AI_PROTOCOL_DIR` / `AI_PROTOCOL_PATH` (local path or GitHub raw URL)
+3. Common dev paths: `ai-protocol/`, `../ai-protocol/`, `../../ai-protocol/`
+4. Last resort: GitHub raw `hiddenpath/ai-protocol` (main)
 
-Protocol files should follow the AI-Protocol v1.5 specification structure. The runtime validates manifests against the official JSON Schema from the AI-Protocol repository.
+For each base path, provider manifests are resolved in a backward-compatible order:
+`dist/v1/providers/<id>.json` → `v1/providers/<id>.yaml`.
+
+Protocol manifests should follow the AI-Protocol v1.5 specification structure. The runtime validates manifests against the official JSON Schema from the AI-Protocol repository.
 
 ## 🔐 Provider Requirements (API Keys)
 
@@ -282,7 +285,7 @@ No `match provider` statements. All logic is derived from protocol configuration
 // The pipeline is built dynamically from protocol manifest
 let pipeline = Pipeline::from_manifest(&manifest)?;
 
-// Operators are configured via YAML, not hardcoded
+// Operators are configured via manifests (YAML/JSON), not hardcoded
 // Adding a new provider requires zero code changes
 ```
 

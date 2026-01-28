@@ -82,7 +82,10 @@ impl ResiliencePolicy for RetryOperator {
         }
 
         // For Remote: use its retryable flag when ErrorContext does not apply
-        if let crate::Error::Remote { retryable: true, .. } = error {
+        if let crate::Error::Remote {
+            retryable: true, ..
+        } = error
+        {
             return Some(self.backoff(attempt));
         }
 

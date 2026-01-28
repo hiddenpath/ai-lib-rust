@@ -1,7 +1,7 @@
 //! Unified message format based on AI-Protocol standard_schema
 
-use serde::{Deserialize, Serialize};
 use base64::Engine as _;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Unified message structure
@@ -40,14 +40,18 @@ impl Message {
     pub fn contains_image(&self) -> bool {
         match &self.content {
             MessageContent::Text(_) => false,
-            MessageContent::Blocks(bs) => bs.iter().any(|b| matches!(b, ContentBlock::Image { .. })),
+            MessageContent::Blocks(bs) => {
+                bs.iter().any(|b| matches!(b, ContentBlock::Image { .. }))
+            }
         }
     }
 
     pub fn contains_audio(&self) -> bool {
         match &self.content {
             MessageContent::Text(_) => false,
-            MessageContent::Blocks(bs) => bs.iter().any(|b| matches!(b, ContentBlock::Audio { .. })),
+            MessageContent::Blocks(bs) => {
+                bs.iter().any(|b| matches!(b, ContentBlock::Audio { .. }))
+            }
         }
     }
 }

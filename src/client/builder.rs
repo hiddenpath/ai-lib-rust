@@ -145,13 +145,11 @@ impl AiClientBuilder {
             || std::env::var("AI_LIB_STRICT_STREAMING").ok().as_deref() == Some("1");
         crate::client::validation::validate_manifest(&manifest, strict_streaming)?;
 
-        let transport = Arc::new(
-            crate::transport::HttpTransport::new_with_base_url(
-                &manifest,
-                &model_id,
-                self.base_url_override.as_deref(),
-            )?,
-        );
+        let transport = Arc::new(crate::transport::HttpTransport::new_with_base_url(
+            &manifest,
+            &model_id,
+            self.base_url_override.as_deref(),
+        )?);
         let pipeline = Arc::new(crate::pipeline::Pipeline::from_manifest(&manifest)?);
 
         let max_inflight = self.max_inflight.or_else(|| {

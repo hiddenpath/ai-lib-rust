@@ -1,6 +1,6 @@
 //! Advanced Pipeline Example
 //!
-//! This example demonstrates how to use the advanced pipeline features of ai-lib-rust (v0.5.0)
+//! This example demonstrates how to use the advanced pipeline features of ai-lib-rust (v0.6.0)
 //! purely through configuration, without changing code logic.
 //!
 //! Features showcased:
@@ -12,7 +12,6 @@
 //! that might not yet exist in the public registry.
 
 use ai_lib_rust::{AiClient, Message};
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,13 +20,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter("ai_lib_rust=debug")
         .init();
 
-    println!("🚀 ai-lib-rust v0.5.0 Advanced Pipeline Demo\n");
+    println!("🚀 ai-lib-rust v0.6.0 Advanced Pipeline Demo\n");
 
     // In a real app, you would load this from a file or remote URL.
     // Here we manually inject a manifest to demonstrate advanced pipeline capabilities.
     // This manifest enables "fan-out" which would theoretically query multiple models
     // (or the same model multiple times) and race them.
-    let manifest_yaml = r#"
+    let _manifest_yaml = r#"
 id: advanced-demo
 protocol_version: "1.1"
 endpoint:
@@ -63,17 +62,18 @@ parameter_mappings:
     // We need to write this to a temporary file or use a custom loader.
     // For simplicity in this demo, we'll assume the standard 'deepseek/deepseek-chat'
     // but we will manually override the client's internal pipeline config for demonstration
-    // if we were accessing internal APIs. 
-    
-    // However, since we want to show "Manifest-First", let's use the actual loader 
+    // if we were accessing internal APIs.
+
+    // However, since we want to show "Manifest-First", let's use the actual loader
     // but point to a local file if possible, or just use the standard one and explain.
-    
+
     // Let's use standard usage but explain what's happening under the hood.
     let client = AiClient::new("deepseek/deepseek-chat").await?;
 
     println!("✅ Client initialized with Manifest-First architecture");
     println!("   Provider: {}", client.manifest.id);
-    println!("   Capabilities: Streaming={}, Tools={}", 
+    println!(
+        "   Capabilities: Streaming={}, Tools={}",
         client.manifest.supports_capability("streaming"),
         client.manifest.supports_capability("tools")
     );
@@ -84,8 +84,9 @@ parameter_mappings:
     ];
 
     println!("\n📡 Sending request (Streaming)...");
-    
-    let mut stream = client.chat()
+
+    let mut stream = client
+        .chat()
         .messages(messages)
         .max_tokens(100)
         .stream() // Force streaming to trigger the pipeline
@@ -93,7 +94,7 @@ parameter_mappings:
         .await?;
 
     use futures::StreamExt;
-    
+
     while let Some(result) = stream.next().await {
         match result {
             Ok(event) => {
@@ -114,7 +115,7 @@ parameter_mappings:
                 eprintln!("\n❌ Pipeline Error: {}", e);
                 // v0.5.0 errors include structured context
                 if let Some(ctx) = e.context() {
-                   println!("   Context: {:?}", ctx); 
+                    println!("   Context: {:?}", ctx);
                 }
             }
         }

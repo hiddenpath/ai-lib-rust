@@ -34,7 +34,10 @@ impl Interceptor for Logger {
         _req: &ai_lib_rust::protocol::UnifiedRequest,
         _resp: &ai_lib_rust::client::UnifiedResponse,
     ) {
-        println!("✅ [Response] provider={} model={} op={}", ctx.provider, ctx.model, ctx.operation);
+        println!(
+            "✅ [Response] provider={} model={} op={}",
+            ctx.provider, ctx.model, ctx.operation
+        );
     }
 
     async fn on_error(
@@ -43,7 +46,10 @@ impl Interceptor for Logger {
         _req: &ai_lib_rust::protocol::UnifiedRequest,
         err: &ai_lib_rust::Error,
     ) {
-        eprintln!("❌ [Error] provider={} model={} op={} err={}", ctx.provider, ctx.model, ctx.operation, err);
+        eprintln!(
+            "❌ [Error] provider={} model={} op={} err={}",
+            ctx.provider, ctx.model, ctx.operation, err
+        );
     }
 }
 
@@ -55,7 +61,11 @@ async fn main() -> Result<()> {
 
     let pipeline = InterceptorPipeline::new().with(Logger);
     let ctx = RequestContext {
-        provider: client.manifest.provider_id.clone().unwrap_or_else(|| client.manifest.id.clone()),
+        provider: client
+            .manifest
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| client.manifest.id.clone()),
         model: client.manifest.id.clone(),
         operation: "chat".to_string(),
     };
@@ -70,7 +80,9 @@ async fn main() -> Result<()> {
 
     // Wrap the call with hooks.
     let _resp = pipeline
-        .execute(&ctx, &req, || async { client.call_model(req.clone()).await })
+        .execute(&ctx, &req, || async {
+            client.call_model(req.clone()).await
+        })
         .await?;
 
     Ok(())
@@ -80,4 +92,3 @@ async fn main() -> Result<()> {
 fn main() {
     eprintln!("Enable feature: --features interceptors");
 }
-

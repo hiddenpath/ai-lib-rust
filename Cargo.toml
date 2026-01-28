@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -8,7 +8,7 @@ description = "Protocol Runtime for AI-Protocol - A high-performance Rust refere
 repository = "https://github.com/hiddenpath/ai-lib-rust"
 readme = "README.md"
 rust-version = "1.75"
-keywords = ["ai", "llm", "streaming", "protocol", "openai"]
+keywords = ["ai", "unified", "api", "llm", "multi-provider"]
 categories = ["api-bindings", "network-programming", "asynchronous"]
 
 # 发布时仅包含下列文件；工作文档、内部文档、临时文件（如 docs/runtime_features.md、

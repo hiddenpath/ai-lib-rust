@@ -32,17 +32,12 @@ impl PreflightExt for AiClient {
             b.allow()?;
         }
         if let Some(sem) = &self.inflight {
-            return Ok(Some(
-                sem.clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| {
-                        Error::runtime_with_context(
-                            "Backpressure semaphore closed",
-                            ErrorContext::new().with_source("backpressure"),
-                        )
-                    })?,
-            ));
+            return Ok(Some(sem.clone().acquire_owned().await.map_err(|_| {
+                Error::runtime_with_context(
+                    "Backpressure semaphore closed",
+                    ErrorContext::new().with_source("backpressure"),
+                )
+            })?));
         }
         Ok(None)
     }

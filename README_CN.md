@@ -8,7 +8,7 @@
 
 与硬编码 provider 特定逻辑的传统适配器库不同，`ai-lib-rust` 是一个**协议驱动的运行时**，执行 AI-Protocol 规范。这意味着：
 
-- **零硬编码 provider 逻辑**：所有行为都由 YAML 协议文件驱动
+- **零硬编码 provider 逻辑**：所有行为都由协议 manifest 驱动（source YAML 或 dist JSON）
 - **基于算子的架构**：通过可组合的算子处理（Decoder → Selector → Accumulator → FanOut → EventMapper）
 - **热重载**：协议配置可以在不重启应用的情况下更新
 - **统一接口**：开发者使用单一、一致的 API，无论底层 provider 是什么
@@ -51,7 +51,7 @@
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.5.1", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.0", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ 能力结构清单（按层次划分）
@@ -215,21 +215,24 @@ let manifest = loader.load_provider("openai").await?;
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.5.1"
+ai-lib-rust = "0.6.0"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
 
 ## 🔧 配置
 
-库自动在以下位置查找协议文件（按顺序）：
+库自动在以下位置查找协议 manifest（按顺序）：
 
 1. 通过 `ProtocolLoader::with_base_path()` 设置的自定义路径
-2. `ai-protocol/` 子目录（Git 子模块）
-3. `../ai-protocol/`（同级目录）
-4. `../../ai-protocol/`（父级的同级目录）
+2. `AI_PROTOCOL_DIR` / `AI_PROTOCOL_PATH`（本地路径或 GitHub raw URL）
+3. 常见开发路径：`ai-protocol/`、`../ai-protocol/`、`../../ai-protocol/`
+4. 最终兜底：GitHub raw `hiddenpath/ai-protocol`（main）
 
-协议文件应遵循 AI-Protocol v1.5 规范结构。运行时根据 AI-Protocol 仓库中的官方 JSON Schema 验证 manifest。
+对每个 base path，provider manifest 的解析顺序为（向后兼容）：
+`dist/v1/providers/<id>.json` → `v1/providers/<id>.yaml`。
+
+协议 manifest 应遵循 AI-Protocol v1.5 规范结构。运行时根据 AI-Protocol 仓库中的官方 JSON Schema 验证 manifest。
 
 ## 🔐 Provider 要求（API 密钥）
 
@@ -314,7 +317,7 @@ client.report_feedback(FeedbackEvent::ChoiceSelection(ChoiceSelectionFeedback {
 // 流水线从协议 manifest 动态构建
 let pipeline = Pipeline::from_manifest(&manifest)?;
 
-// 算子通过 YAML 配置，而不是硬编码
+// 算子通过 manifest（YAML/JSON）配置，而不是硬编码
 // 添加新 provider 需要零代码更改
 ```
 
