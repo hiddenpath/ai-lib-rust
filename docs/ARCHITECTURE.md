@@ -22,6 +22,12 @@ The crate avoids hardcoding provider-specific behavior. Instead, it **loads AI-P
 - **Types layer (standard schema types)**: `src/types/`
 - **Telemetry layer**: `src/telemetry/`
 - **Utilities**: `src/utils/`
+- **New in v0.6.5** (features from ai-lib-python):
+  - **Embeddings layer**: `src/embeddings/` - Embedding client and vector operations
+  - **Cache layer**: `src/cache/` - Response caching with TTL support
+  - **Tokens layer**: `src/tokens/` - Token counting and cost estimation
+  - **Batch layer**: `src/batch/` - Request batching and execution
+  - **Plugins layer**: `src/plugins/` - Plugin system with hooks and middleware
 - **Optional helpers (feature-gated)**:
   - `routing_mvp`: `src/routing/`
   - `interceptors`: `src/interceptors/`
@@ -222,9 +228,104 @@ Used by public `Result<T>`:
 
 ---
 
-## 9) Feature-gated optional helpers
+## 9) New modules (v0.6.5)
 
-### 9.1 `routing_mvp`
+These modules were added in v0.6.5, bringing features from the Python reference implementation.
+
+### 9.1 Embeddings layer (`src/embeddings/`)
+
+Provides embedding generation and vector operations:
+
+- **`EmbeddingClient`**: Generate embeddings via OpenAI-compatible APIs
+- **`EmbeddingClientBuilder`**: Configure model, API key, dimensions, batch size
+- **Types**: `Embedding`, `EmbeddingRequest`, `EmbeddingResponse`, `EmbeddingUsage`, `EmbeddingModel`
+- **Vector operations**:
+  - Similarity: `cosine_similarity`, `dot_product`
+  - Distance: `euclidean_distance`, `manhattan_distance`
+  - Utilities: `normalize_vector`, `magnitude`, `average_vectors`, `weighted_average_vectors`
+  - Search: `find_most_similar` with `SimilarityMetric` enum
+
+### 9.2 Cache layer (`src/cache/`)
+
+Response caching with pluggable backends:
+
+- **`CacheBackend`** trait: async interface for cache implementations
+- **`MemoryCache`**: In-memory LRU cache with TTL and automatic eviction
+- **`NullCache`**: No-op implementation for disabling cache
+- **`CacheManager`**: High-level manager with statistics tracking
+- **`CacheKey`** / **`CacheKeyGenerator`**: Deterministic SHA-256 based key generation
+- **`CacheStats`**: Track hits, misses, hit ratio
+
+### 9.3 Tokens layer (`src/tokens/`)
+
+Token counting and cost estimation:
+
+- **`TokenCounter`** trait: Count tokens, count messages, truncate to limit
+- **Implementations**:
+  - `CharacterEstimator`: Simple character-based estimation (configurable ratio)
+  - `AnthropicEstimator`: Claude-specific estimation with whitespace adjustment
+  - `CachingCounter`: Wrapper that caches count results
+- **`get_token_counter(model)`**: Factory function returning appropriate counter
+- **`ModelPricing`**: Pre-configured pricing for GPT-4o, GPT-4o-mini, Claude 3.5 Sonnet, Claude 3 Haiku
+- **`CostEstimate`**: Calculate and format request costs
+
+### 9.4 Batch layer (`src/batch/`)
+
+Request batching and batch execution:
+
+- **`BatchConfig`**: Configure max batch size, max wait time, auto-flush
+- **`BatchItem<T>`**: Wrapper with metadata (timestamp, request_id, priority)
+- **`BatchCollector<T>`**: Accumulate items, detect when to flush
+- **`BatchExecutor`**: Execute batches with configurable strategies
+- **`BatchStrategy`**: `Parallel`, `Sequential`, or `Concurrent { max_concurrency }`
+- **`BatchResult<T, E>`**: Track successes, failures, execution time, success rate
+
+### 9.5 Plugins layer (`src/plugins/`)
+
+Extensible plugin system:
+
+- **`Plugin`** trait: Lifecycle hooks (`on_register`, `on_before_request`, `on_after_response`, `on_error`, `on_stream_event`)
+- **`PluginPriority`**: `Highest`, `High`, `Normal`, `Low`, `Lowest`
+- **`PluginContext`**: Request/response context with metadata and skip/error flags
+- **`CompositePlugin`**: Combine multiple plugins
+- **`PluginRegistry`**: Global registry with `register`, `unregister`, `trigger_*` methods
+- **`get_plugin_registry()`**: Access global singleton
+
+**Hook system** (`src/plugins/hooks.rs`):
+- `HookType`: `BeforeRequest`, `AfterResponse`, `OnError`, `OnStreamEvent`
+- `Hook` / `AsyncHook` / `FnHook`: Different hook implementations
+- `HookManager`: Manage and trigger hooks
+
+**Middleware** (`src/plugins/middleware.rs`):
+- `Middleware` trait: Transform request/response
+- `MiddlewareChain`: Chain multiple middleware
+- `MiddlewareContext`: Context passed through chain
+
+### 9.6 Extended Telemetry (`src/telemetry/`)
+
+Enhanced feedback system (building on v0.2.0):
+
+- **New feedback types**:
+  - `RatingFeedback`: Star ratings (1-5) with optional comment
+  - `ThumbsFeedback`: Thumbs up/down with reason
+  - `TextFeedback`: Free-form text feedback
+  - `CorrectionFeedback`: Track user corrections with edit distance
+  - `RegenerateFeedback`: Track regeneration requests
+  - `StopFeedback`: Track early stop actions
+- **New sinks**:
+  - `InMemoryFeedbackSink`: For testing, with `get_events()`, `get_events_by_request()`
+  - `ConsoleFeedbackSink`: Debug output with configurable prefix
+  - `CompositeFeedbackSink`: Fan-out to multiple sinks
+- **Global management**:
+  - `get_feedback_sink()`: Get current global sink
+  - `set_feedback_sink(sink)`: Set global sink
+  - `report_feedback(event)`: Report via global sink
+
+---
+
+## 10) Feature-gated optional helpers
+
+### 10.1 `routing_mvp`
 
 Pure logic helpers to select a model id before building a runtime client:
 
@@ -237,7 +338,7 @@ Enable:
 ai-lib-rust = { version = "0.1", features = ["routing_mvp"] }
 ```
 
-### 9.2 `interceptors`
+### 10.2 `interceptors`
 
 Application-layer hooks around calls (logging/metrics/audit):
 
@@ -253,7 +354,7 @@ ai-lib-rust = { version = "0.1", features = ["interceptors"] }
 
 ---
 
-## 10) Recommended usage patterns (runtime-first)
+## 11) Recommended usage patterns (runtime-first)
 
 - Prefer **`provider/model`** IDs and protocol manifests over any provider enums.
 - Prefer the **chat builder API** (`client.chat()...`) for a small, stable public surface.
@@ -262,7 +363,7 @@ ai-lib-rust = { version = "0.1", features = ["interceptors"] }
 
 ---
 
-## 11) Testing & offline behavior
+## 12) Testing & offline behavior
 
 The test suite is designed to run offline:
 
