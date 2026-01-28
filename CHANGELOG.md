@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.5 - 2026-01-27
+
+### Added (Features from ai-lib-python)
+
+This release adds features learned from the Python reference implementation.
+
+#### Embedding Support (`embeddings/`)
+- `EmbeddingClient`, `EmbeddingClientBuilder` for generating embeddings
+- `Embedding`, `EmbeddingRequest`, `EmbeddingResponse`, `EmbeddingUsage` types
+- Vector operations: `cosine_similarity`, `dot_product`, `euclidean_distance`, `manhattan_distance`
+- `normalize_vector`, `average_vectors`, `weighted_average_vectors`, `find_most_similar`
+
+#### Response Caching (`cache/`)
+- `CacheBackend` trait with `MemoryCache` and `NullCache` implementations
+- `CacheManager` with TTL support and statistics
+- `CacheKey`, `CacheKeyGenerator` for deterministic cache keys
+
+#### Token Counting (`tokens/`)
+- `TokenCounter` trait with `CharacterEstimator`, `AnthropicEstimator`, `CachingCounter`
+- `ModelPricing` with pre-configured pricing for GPT-4o, Claude models
+- `CostEstimate` for cost calculation
+
+#### Extended Feedback System (`telemetry/`)
+- New feedback types: `RatingFeedback`, `ThumbsFeedback`, `TextFeedback`, `CorrectionFeedback`, `RegenerateFeedback`, `StopFeedback`
+- New sinks: `InMemoryFeedbackSink`, `ConsoleFeedbackSink`, `CompositeFeedbackSink`
+- Global sink management: `get_feedback_sink()`, `set_feedback_sink()`, `report_feedback()`
+
+#### Request Batching (`batch/`)
+- `BatchConfig`, `BatchCollector` for request accumulation
+- `BatchExecutor`, `BatchResult` for batch execution with configurable strategies
+
+#### Plugin System (`plugins/`)
+- `Plugin` trait with lifecycle hooks
+- `PluginContext`, `PluginPriority`, `CompositePlugin`
+- `PluginRegistry` for centralized management
+- Hook system: `HookType`, `Hook`, `HookManager`
+- Middleware: `Middleware`, `MiddlewareChain`, `MiddlewareContext`
+
+### Dependencies
+- Added `sha2` for cache key hashing
+- Added `once_cell` for lazy static initialization
+
 ## 0.6.0 - 2026-01-27
 
 ### Added

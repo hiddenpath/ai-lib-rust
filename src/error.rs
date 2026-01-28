@@ -225,6 +225,40 @@ impl Error {
         }
     }
 
+    /// Create a simple validation error
+    pub fn validation(msg: impl Into<String>) -> Self {
+        Self::validation_with_context(msg, ErrorContext::new())
+    }
+
+    /// Create a simple configuration error
+    pub fn configuration(msg: impl Into<String>) -> Self {
+        Self::configuration_with_context(msg, ErrorContext::new())
+    }
+
+    /// Create a network error with context
+    pub fn network_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
+        Error::Runtime {
+            message: format!("Network error: {}", msg.into()),
+            context,
+        }
+    }
+
+    /// Create an API error with context
+    pub fn api_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
+        Error::Runtime {
+            message: format!("API error: {}", msg.into()),
+            context,
+        }
+    }
+
+    /// Create a parsing error
+    pub fn parsing(msg: impl Into<String>) -> Self {
+        Error::Validation {
+            message: format!("Parsing error: {}", msg.into()),
+            context: ErrorContext::new().with_source("parsing"),
+        }
+    }
+
     /// Extract error context if available
     pub fn context(&self) -> Option<&ErrorContext> {
         match self {

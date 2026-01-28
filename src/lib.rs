@@ -7,11 +7,16 @@
 //! for interacting with AI models across different providers without hardcoding
 //! provider-specific logic.
 
+pub mod batch;
+pub mod cache;
 pub mod client;
+pub mod embeddings;
 pub mod pipeline;
+pub mod plugins;
 pub mod protocol;
 pub mod resilience;
 pub mod telemetry;
+pub mod tokens;
 pub mod transport;
 pub mod types;
 pub mod utils;
