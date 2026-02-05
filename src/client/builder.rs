@@ -133,12 +133,13 @@ impl AiClientBuilder {
             loader = loader.with_hot_reload(true);
         }
 
-        // model is in form "provider/model-id"
+        // model is in form "provider/model-id" or "provider/org/model-name" (e.g. nvidia/minimaxai/minimax-m2)
         let parts: Vec<&str> = model.split('/').collect();
-        let model_id = parts
-            .get(1)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| model.to_string());
+        let model_id = if parts.len() >= 2 {
+            parts[1..].join("/")
+        } else {
+            model.to_string()
+        };
 
         let manifest = loader.load_model(model).await?;
         let strict_streaming = self.strict_streaming

@@ -89,17 +89,39 @@ impl HttpTransport {
     }
 
     fn get_api_key(provider_id: &str) -> Option<String> {
-        // 1. Try Keyring
+        // 1. Try Environment Variable (PROVIDER_API_KEY)
+        let env_var = format!("{}_API_KEY", provider_id.to_uppercase());
+        if let Ok(key) = env::var(&env_var) {
+            tracing::debug!(
+                "Loaded API key for provider '{}' from environment variable '{}'. Length: {}. First char: '{}', Last char: '{}'",
+                provider_id,
+                env_var,
+                key.len(),
+                key.chars().next().unwrap_or('?'),
+                key.chars().last().unwrap_or('?')
+            );
+            tracing::debug!("Key bytes: {:?}", key.as_bytes());
+            return Some(key);
+        }
+
+        // 2. Try Keyring
         let entry = Entry::new("ai-protocol", provider_id).ok();
         if let Some(entry) = entry {
             if let Ok(key) = entry.get_password() {
+                tracing::debug!(
+                    "Loaded API key for provider '{}' from system keyring",
+                    provider_id
+                );
                 return Some(key);
             }
         }
 
-        // 2. Try Environment Variable (PROVIDER_API_KEY)
-        let env_var = format!("{}_API_KEY", provider_id.to_uppercase());
-        env::var(env_var).ok()
+        tracing::warn!(
+            "No API key found for provider '{}' (checked env var '{}' and keyring)",
+            provider_id,
+            env_var
+        );
+        None
     }
 
     pub async fn execute_stream_response(

@@ -59,8 +59,9 @@ impl ProtocolLoader {
             }
         }
 
+        // Allow "provider/model" or "provider/org/model-name" (e.g. nvidia/minimaxai/minimax-m2)
         let parts: Vec<&str> = model.split('/').collect();
-        if parts.len() != 2 {
+        if parts.len() < 2 {
             return Err(ProtocolError::NotFound {
                 id: model.to_string(),
                 hint: Some("Ensure the model name follows the 'provider/model' format".to_string()),
@@ -68,12 +69,12 @@ impl ProtocolLoader {
         }
 
         let provider = parts[0];
-        let model_name = parts[1];
+        let model_name = parts[1..].join("/");
 
         // First, try to load model registry to get provider reference.
         // If registry doesn't contain this model (common for providers like deepseek),
         // fall back to loading provider manifest directly using the provider segment.
-        let manifest = match self.load_model_config(model_name).await {
+        let manifest = match self.load_model_config(&model_name).await {
             Ok(model_config) => self.load_provider(&model_config.provider).await?,
             Err(ProtocolError::NotFound { .. }) => self.load_provider(provider).await?,
             Err(e) => return Err(e),

@@ -95,6 +95,10 @@ path = "examples/custom_protocol.rs"
 name = "test_protocol_loading"
 path = "examples/test_protocol_loading.rs"
 
+[[example]]
+name = "connectivity_report"
+path = "examples/connectivity_report.rs"
+
 [[bin]]
 name = "validate_protocols"
 path = "src/bin/validate_protocols.rs"

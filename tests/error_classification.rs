@@ -6,10 +6,10 @@ fn is_fallbackable_error_class(error_class: &str) -> bool {
     match error_class {
         // Transient server errors - fallback makes sense
         "rate_limited" | "overloaded" | "server_error" | "timeout" | "conflict" => true,
-        // Quota exhausted - may work on another provider
-        "quota_exhausted" => true,
+        // Quota / auth - per-provider; fallback can succeed
+        "quota_exhausted" | "authentication" | "authorized_error" => true,
         // Client errors - don't fallback (will fail on any provider)
-        "invalid_request" | "authentication" | "permission_denied" | "not_found"
+        "invalid_request" | "permission_denied" | "not_found"
         | "request_too_large" | "cancelled" => false,
         // Unknown/other - conservative: don't fallback
         _ => false,
@@ -26,6 +26,8 @@ fn test_fallbackable_error_classes() {
         "timeout",
         "conflict",
         "quota_exhausted",
+        "authentication",
+        "authorized_error",
     ];
 
     for class in fallbackable_classes {
@@ -42,7 +44,6 @@ fn test_non_fallbackable_error_classes() {
     // Test cases: client errors should NOT be fallbackable
     let non_fallbackable_classes = vec![
         "invalid_request",
-        "authentication",
         "permission_denied",
         "not_found",
         "request_too_large",
