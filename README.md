@@ -51,7 +51,7 @@ Enable with:
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.5", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.6", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -213,7 +213,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.5"
+ai-lib-rust = "0.6.6"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```

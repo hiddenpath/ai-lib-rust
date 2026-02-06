@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.6.5"
+version = "0.6.6"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -58,6 +58,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Utilities
 url = "2.5"
+regex = "1.10"
 async-trait = "0.1"
 bytes = "1.5"
 async-recursion = "1.0"
@@ -72,6 +73,19 @@ once_cell = "1.19"
 tokio-test = "0.4"
 tokio-stream = "0.1"
 mockito = "1.2"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "protocol_loading"
+harness = false
+
+[[bench]]
+name = "request_compilation"
+harness = false
+
+[[bench]]
+name = "streaming_pipeline"
+harness = false
 
 [features]
 # Keep runtime core lean; opt-in progressive complexity to preserve a stable API surface.
@@ -98,6 +112,22 @@ path = "examples/test_protocol_loading.rs"
 [[example]]
 name = "connectivity_report"
 path = "examples/connectivity_report.rs"
+
+[[example]]
+name = "guardrails_usage"
+path = "examples/guardrails_usage.rs"
+
+[[example]]
+name = "resilience_patterns"
+path = "examples/resilience_patterns.rs"
+
+[[example]]
+name = "batch_processing"
+path = "examples/batch_processing.rs"
+
+[[example]]
+name = "embeddings_similarity"
+path = "examples/embeddings_similarity.rs"
 
 [[bin]]
 name = "validate_protocols"

@@ -1,11 +1,57 @@
+//! 错误处理模块：提供统一的错误类型和结构化错误上下文。
+//!
+//! # Error Handling Module
+//!
+//! This module provides unified error types and structured error contexts for
+//! comprehensive error handling across the ai-lib-rust library.
+//!
+//! ## Overview
+//!
+//! The error system provides:
+//! - **Unified Error Type**: Single [`Error`] enum for all error conditions
+//! - **Structured Context**: Rich [`ErrorContext`] for debugging information
+//! - **Actionable Hints**: User-friendly suggestions for error resolution
+//! - **Error Classification**: Retryable and fallbackable error marking
+//!
+//! ## Error Categories
+//!
+//! | Variant | Description |
+//! |---------|-------------|
+//! | `Protocol` | Protocol specification errors |
+//! | `Pipeline` | Streaming pipeline errors |
+//! | `Configuration` | Configuration and setup errors |
+//! | `Validation` | Input validation errors |
+//! | `Runtime` | Runtime execution errors |
+//! | `Transport` | Network transport errors |
+//! | `Remote` | Remote API errors (with HTTP status) |
+//!
+//! ## Example
+//!
+//! ```rust
+//! use ai_lib_rust::error::{Error, ErrorContext};
+//!
+//! // Create error with context
+//! let error = Error::validation_with_context(
+//!     "Invalid temperature value",
+//!     ErrorContext::new()
+//!         .with_field_path("request.temperature")
+//!         .with_details("Value must be between 0.0 and 2.0")
+//!         .with_hint("Try setting temperature to 0.7 for balanced output"),
+//! );
+//! ```
+
 use crate::pipeline::PipelineError;
 use crate::protocol::ProtocolError;
 use thiserror::Error;
 
 /// Structured error context for better error handling and debugging.
+///
+/// Provides rich metadata about errors including field paths, details,
+/// hints, and operational flags for retry/fallback decisions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ErrorContext {
-    /// Field path or configuration key that caused the error (e.g., "manifest.base_url", "request.messages[0].content")
+    /// Field path or configuration key that caused the error
+    /// (e.g., "manifest.base_url", "request.messages\[0\].content")
     pub field_path: Option<String>,
     /// Additional context about the error (e.g., expected type, actual value)
     pub details: Option<String>,

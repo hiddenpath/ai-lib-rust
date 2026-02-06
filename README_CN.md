@@ -51,7 +51,7 @@
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.5", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = { version = "0.6.6", features = ["routing_mvp", "interceptors"] }
 ```
 
 ## 🗺️ 能力结构清单（按层次划分）
@@ -245,7 +245,7 @@ let manifest = loader.load_provider("openai").await?;
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.5"
+ai-lib-rust = "0.6.6"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```

@@ -1,10 +1,65 @@
-//! Pipeline interpreter layer - the core operator execution engine
+//! 流水线处理模块：实现流式响应处理的核心算子执行引擎。
+//!
+//! # Pipeline Interpreter Layer
 //!
 //! This module implements the operator pipeline that processes streaming responses
-//! according to protocol configuration. The pipeline consists of:
-//! - Decoder: Parses raw bytes into frames
-//! - Transforms: A sequence of optional operators (Selector, Accumulator, FanOut, etc.)
-//! - EventMapper: Converts frames to unified events
+//! according to protocol configuration. It is the core execution engine that
+//! transforms raw provider responses into unified streaming events.
+//!
+//! ## Overview
+//!
+//! The pipeline architecture provides:
+//! - **Protocol-Driven Processing**: Pipeline structure defined by protocol manifest
+//! - **Composable Operators**: Mix and match transforms for different providers
+//! - **Streaming-First**: Efficient byte-level streaming throughout
+//! - **Type-Safe Events**: Strongly typed output events for application consumption
+//!
+//! ## Pipeline Stages
+//!
+//! ```text
+//! Raw Bytes → Decoder → Transforms → Event Mapper → Unified Events
+//!     │           │          │              │
+//!     │        JSON/SSE   Selector,      Content,
+//!     │        parsing    Accumulator,   ToolCall,
+//!   HTTP                  FanOut...      Usage events
+//! ```
+//!
+//! ## Key Components
+//!
+//! | Component | Description |
+//! |-----------|-------------|
+//! | [`Pipeline`] | Main pipeline executor |
+//! | [`PipelineBuilder`] | Builder for constructing pipelines |
+//! | [`Decoder`] | Trait for stream decoding (SSE, JSON Lines) |
+//! | [`Transform`] | Trait for intermediate transformations |
+//! | [`Mapper`] | Trait for final event mapping |
+//!
+//! ## Submodules
+//!
+//! | Module | Description |
+//! |--------|-------------|
+//! | [`decode`] | Stream decoders (SSE, JSON Lines, raw) |
+//! | [`select`] | Frame selection operators (JSON path) |
+//! | [`accumulate`] | Content accumulation operators |
+//! | [`fan_out`] | Multi-candidate fan-out operators |
+//! | [`event_map`] | Event mapping to unified format |
+//! | [`retry`] | Retry operators with backoff |
+//! | [`fallback`] | Fallback operators for resilience |
+//!
+//! ## Example
+//!
+//! ```rust,no_run
+//! use ai_lib_rust::pipeline::{Pipeline, PipelineBuilder};
+//! use ai_lib_rust::protocol::ProtocolManifest;
+//!
+//! // Create pipeline from protocol manifest
+//! let manifest: ProtocolManifest = todo!(); // Load from file
+//! let pipeline = Pipeline::from_manifest(&manifest)?;
+//!
+//! // Process a streaming response
+//! // let events = pipeline.process_stream(byte_stream).await?;
+//! # Ok::<(), ai_lib_rust::pipeline::PipelineError>(())
+//! ```
 
 pub mod accumulate;
 pub mod decode;

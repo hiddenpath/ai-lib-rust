@@ -12,6 +12,7 @@
 build_error.log
 check_output*.txt
 error.txt
+connectivity_report.txt
 
 # Work / internal documents (do not publish)
 *REPORT*.md

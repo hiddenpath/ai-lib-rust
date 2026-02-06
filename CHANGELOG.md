@@ -2,6 +2,63 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.6.6 - 2026-02-06
+
+### Added
+
+#### Guardrails Module (`guardrails/`)
+- `Guardrails` controller for content filtering and safety checks
+- `GuardrailsConfig` with builder pattern for flexible configuration
+- `KeywordFilter` and `PatternFilter` for rule-based content filtering
+- `PiiDetector` for detecting personally identifiable information (email, phone, SSN, credit card)
+- `CheckResult` and `Violation` types for structured violation reporting
+- Preset configurations: `Guardrails::permissive()` and `Guardrails::strict()`
+
+#### Benchmarks
+- Added Criterion benchmark framework with three benchmark suites:
+  - `protocol_loading`: Protocol manifest loading performance
+  - `request_compilation`: Request building and compilation benchmarks
+  - `streaming_pipeline`: Streaming response processing benchmarks
+
+#### Production Examples
+- `guardrails_usage.rs`: Content filtering and PII detection demo
+- `resilience_patterns.rs`: Circuit breaker and rate limiter usage
+- `batch_processing.rs`: Batch collection and execution patterns
+- `embeddings_similarity.rs`: Vector operations and semantic search
+
+#### API Enhancements
+- `CircuitBreakerConfig`: Added `new()`, `with_failure_threshold()`, `with_cooldown()`, `with_reset_timeout()` builder methods
+- `CircuitBreaker`: Added `allow_request()`, `record_success()`, `record_failure()` convenience methods
+- `RateLimiterConfig`: Added `new()`, `with_max_tokens()`, `with_refill_rate()` builder methods
+- `RateLimiter`: Added `try_acquire()` for non-blocking token acquisition
+
+### Changed
+
+#### Code Refactoring
+- Split `protocol/mod.rs` (635 lines) into focused sub-modules:
+  - `protocol/error.rs`: Protocol error types
+  - `protocol/request.rs`: Unified request format
+  - `protocol/config.rs`: Configuration structures
+  - `protocol/manifest.rs`: Protocol manifest structure
+
+#### Documentation
+- Enhanced Rustdoc documentation for 12 core modules with:
+  - Professional English documentation
+  - Chinese one-line introduction at module level
+  - Comprehensive examples and usage guides
+  - Module capability tables
+
+#### Testing
+- Added 75+ unit tests across modules:
+  - `batch/collector.rs`: BatchCollector, BatchConfig, BatchItem tests
+  - `embeddings/vectors.rs`: Vector operations (cosine similarity, distance metrics)
+  - `resilience/circuit_breaker.rs`: Circuit breaker state machine tests
+  - `resilience/rate_limiter.rs`: Token bucket algorithm tests
+
+### Dependencies
+- Added `criterion` (0.5) for benchmarking
+- Added `regex` (1.10) for pattern matching in guardrails
+
 ## 0.6.5 - 2026-01-27
 
 ### Added (Features from ai-lib-python)

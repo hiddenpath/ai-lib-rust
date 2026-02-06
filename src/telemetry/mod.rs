@@ -1,9 +1,63 @@
-//! Telemetry and feedback (optional, application-controlled).
+//! 遥测与反馈模块：提供可选的、应用可控的用户反馈收集机制。
 //!
-//! The runtime MUST NOT force telemetry collection. Instead it provides:
-//! - a stable `client_request_id` for linkage
-//! - typed feedback events
-//! - an injectable `FeedbackSink` hook (default: no-op)
+//! # Telemetry and Feedback Module
+//!
+//! This module provides optional, application-controlled telemetry and feedback
+//! collection capabilities. Privacy is paramount - the runtime MUST NOT force
+//! telemetry collection.
+//!
+//! ## Overview
+//!
+//! The feedback system enables:
+//! - Collection of user preferences (thumbs up/down, ratings)
+//! - Tracking of choice selections in multi-candidate responses
+//! - Recording corrections and regeneration requests
+//! - Custom feedback integration with external systems
+//!
+//! ## Design Principles
+//!
+//! - **Opt-in Only**: No telemetry is collected unless explicitly configured
+//! - **Application-Controlled**: The application decides what to collect and where to send
+//! - **Stable Linkage**: `client_request_id` provides correlation across events
+//! - **Pluggable Sinks**: Implement [`FeedbackSink`] for custom destinations
+//!
+//! ## Key Components
+//!
+//! | Component | Description |
+//! |-----------|-------------|
+//! | [`FeedbackEvent`] | Typed feedback event enum |
+//! | [`FeedbackSink`] | Trait for feedback destinations |
+//! | [`NoopFeedbackSink`] | Default no-op sink (no collection) |
+//! | [`InMemoryFeedbackSink`] | In-memory sink for testing |
+//! | [`ConsoleFeedbackSink`] | Console logging sink for debugging |
+//! | [`CompositeFeedbackSink`] | Multi-destination composite sink |
+//!
+//! ## Feedback Types
+//!
+//! | Type | Description |
+//! |------|-------------|
+//! | [`ThumbsFeedback`] | Simple positive/negative feedback |
+//! | [`RatingFeedback`] | Numeric rating (e.g., 1-5 stars) |
+//! | [`ChoiceSelectionFeedback`] | Multi-candidate selection tracking |
+//! | [`CorrectionFeedback`] | User corrections to model output |
+//! | [`RegenerateFeedback`] | Regeneration request tracking |
+//! | [`TextFeedback`] | Free-form text feedback |
+//!
+//! ## Example
+//!
+//! ```rust
+//! use ai_lib_rust::telemetry::{FeedbackEvent, ThumbsFeedback, set_feedback_sink, InMemoryFeedbackSink};
+//! use std::sync::Arc;
+//!
+//! // Configure feedback collection (opt-in)
+//! let sink = Arc::new(InMemoryFeedbackSink::new(100));
+//! set_feedback_sink(sink.clone());
+//!
+//! // Record feedback
+//! let feedback = ThumbsFeedback::thumbs_up("req-123")
+//!     .with_reason("Helpful response");
+//! // report_feedback(FeedbackEvent::Thumbs(feedback)).await?;
+//! ```
 
 use crate::Result;
 use async_trait::async_trait;
