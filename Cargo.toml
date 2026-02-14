@@ -48,6 +48,10 @@ notify = "6.1"
 # JSON Schema validation
 jsonschema = "0.18"
 
+# Structured output support
+schemars = "0.8"  # JSON schema generation from Rust types
+regex = "1.10"    # Regular expressions for pattern constraints
+
 # Error handling
 thiserror = "1.0"
 anyhow = "1.0"
@@ -58,7 +62,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Utilities
 url = "2.5"
-regex = "1.10"
 async-trait = "0.1"
 bytes = "1.5"
 async-recursion = "1.0"

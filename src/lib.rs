@@ -79,6 +79,7 @@ pub mod pipeline;
 pub mod plugins;
 pub mod protocol;
 pub mod resilience;
+pub mod structured;
 pub mod telemetry;
 pub mod tokens;
 pub mod transport;

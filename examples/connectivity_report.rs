@@ -24,13 +24,22 @@ const PROVIDER_MODELS: &[(&str, &str)] = &[
     ("zhipu", "zhipu/glm-4-plus"),
     ("openai", "openai/gpt-4o-mini"),
     ("anthropic", "anthropic/claude-3-5-sonnet"),
-    ("together", "together/together/meta-llama/Llama-3-70b-chat-hf"),
+    (
+        "together",
+        "together/together/meta-llama/Llama-3-70b-chat-hf",
+    ),
     ("qwen", "qwen/qwen-turbo"),
     ("moonshot", "moonshot/moonshot-v1-8k"),
     ("mistral", "mistral/mistral-small-latest"),
     ("cohere", "cohere/command-r-plus-08-2024"),
-    ("fireworks", "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct"),
-    ("deepinfra", "deepinfra/meta-llama/Meta-Llama-3.1-70B-Instruct"),
+    (
+        "fireworks",
+        "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct",
+    ),
+    (
+        "deepinfra",
+        "deepinfra/meta-llama/Meta-Llama-3.1-70B-Instruct",
+    ),
     ("lepton", "lepton/meta-llama/Meta-Llama-3.1-70B-Instruct"),
     ("sensenova", "sensenova/sensenova-v1"),
     ("spark", "spark/general"),
@@ -103,18 +112,39 @@ fn api_reference_url(provider_id: &str) -> &'static str {
 fn classify_error(err: &str) -> (&'static str, &'static str) {
     let e = err.to_lowercase();
     // Check 429 / quota before 401 so "429 + insufficient_quota" is not misclassified as auth
-    if e.contains("429") || e.contains("rate_limited") || e.contains("insufficient_quota") || e.contains("quota") && (e.contains("exceeded") || e.contains("billing")) {
-        ("429 / 限流或配额", "请求过于频繁或配额用尽；可重试或检查账单/升级配额。")
-    } else if e.contains("401") || e.contains("authentication") || e.contains("invalid api key") || e.contains("authorized_error") {
+    if e.contains("429")
+        || e.contains("rate_limited")
+        || e.contains("insufficient_quota")
+        || e.contains("quota") && (e.contains("exceeded") || e.contains("billing"))
+    {
+        (
+            "429 / 限流或配额",
+            "请求过于频繁或配额用尽；可重试或检查账单/升级配额。",
+        )
+    } else if e.contains("401")
+        || e.contains("authentication")
+        || e.contains("invalid api key")
+        || e.contains("authorized_error")
+    {
         ("401 / 认证失败", "检查 API Key 是否正确、是否过期；确认环境变量名与 manifest 中 token_env 一致（如 DEEPSEEK_API_KEY）。")
     } else if e.contains("404") || e.contains("not found") || e.contains("not_found") {
-        ("404 / 资源不存在", "确认 manifest 中 endpoint path 与厂商文档一致；模型 ID 是否在厂商当前可用列表中。")
-    } else if e.contains("500") || e.contains("503") || e.contains("server_error") || e.contains("overloaded") {
+        (
+            "404 / 资源不存在",
+            "确认 manifest 中 endpoint path 与厂商文档一致；模型 ID 是否在厂商当前可用列表中。",
+        )
+    } else if e.contains("500")
+        || e.contains("503")
+        || e.contains("server_error")
+        || e.contains("overloaded")
+    {
         ("5xx / 服务端错误", "厂商服务暂时不可用；稍后重试。")
     } else if e.contains("timeout") || e.contains("timed out") {
         ("超时", "增大 AI_HTTP_TIMEOUT_SECS 或检查网络。")
     } else if e.contains("protocol") || (e.contains("not found") && e.contains("provider")) {
-        ("协议/Manifest 未找到", "设置 AI_PROTOCOL_DIR 指向 ai-protocol 目录；或确认该 provider 在 ai-protocol 中存在。")
+        (
+            "协议/Manifest 未找到",
+            "设置 AI_PROTOCOL_DIR 指向 ai-protocol 目录；或确认该 provider 在 ai-protocol 中存在。",
+        )
     } else {
         ("其他", "对照厂商 API 文档核对请求格式与参数。")
     }
@@ -123,7 +153,9 @@ fn classify_error(err: &str) -> (&'static str, &'static str) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive("info".parse()?))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env().add_directive("info".parse()?),
+        )
         .with_target(false)
         .try_init();
 
@@ -191,14 +223,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let err_short = r
             .error_message
             .as_ref()
-            .map(|s| if s.len() > 60 { format!("{}...", &s[..57]) } else { s.clone() })
+            .map(|s| {
+                if s.len() > 60 {
+                    format!("{}...", &s[..57])
+                } else {
+                    s.clone()
+                }
+            })
             .unwrap_or_default();
         println!(
             "| {:<10} | {:<26} | {:<6} | {:<12} |",
-            r.provider_id,
-            mid_short,
-            r.status,
-            r.duration_ms
+            r.provider_id, mid_short, r.status, r.duration_ms
         );
         if !err_short.is_empty() {
             println!("|            | {} |", err_short);
@@ -220,18 +255,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let ok_count = rows.iter().filter(|r| r.status == "OK").count();
-    println!("=== Summary: {} OK, {} FAIL ===\n", ok_count, failures.len());
+    println!(
+        "=== Summary: {} OK, {} FAIL ===\n",
+        ok_count,
+        failures.len()
+    );
 
     if let Ok(path) = env::var("CONNECTIVITY_REPORT_OUT") {
         let mut out = String::new();
         out.push_str("=== AI-Protocol connectivity report ===\n\n");
         for r in &rows {
-            out.push_str(&format!("{} | {} | {} | {} ms\n", r.provider_id, r.model_id, r.status, r.duration_ms));
+            out.push_str(&format!(
+                "{} | {} | {} | {} ms\n",
+                r.provider_id, r.model_id, r.status, r.duration_ms
+            ));
             if let Some(e) = &r.error_message {
                 out.push_str(&format!("  Error: {}\n", e));
             }
         }
-        out.push_str(&format!("\nSummary: {} OK, {} FAIL\n", ok_count, failures.len()));
+        out.push_str(&format!(
+            "\nSummary: {} OK, {} FAIL\n",
+            ok_count,
+            failures.len()
+        ));
         std::fs::write(&path, out).ok();
         println!("Report written to {}", path);
     }

@@ -5,7 +5,7 @@ mod hooks;
 mod middleware;
 mod registry;
 
-pub use base::{Plugin, PluginContext, PluginPriority, CompositePlugin};
-pub use hooks::{Hook, HookType, HookManager, AsyncHook, FnHook};
+pub use base::{CompositePlugin, Plugin, PluginContext, PluginPriority};
+pub use hooks::{AsyncHook, FnHook, Hook, HookManager, HookType};
 pub use middleware::{Middleware, MiddlewareChain, MiddlewareContext};
-pub use registry::{PluginRegistry, get_plugin_registry};
+pub use registry::{get_plugin_registry, PluginRegistry};

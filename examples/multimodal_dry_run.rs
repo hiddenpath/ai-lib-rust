@@ -73,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         stream: false,
         tools: None,
         tool_choice: None,
+        response_format: None,
     };
     let openai_compiled = openai.manifest.compile_request(&openai_unified)?;
     println!(
@@ -95,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         stream: false,
         tools: None,
         tool_choice: None,
+        response_format: None,
     };
     let gemini_compiled = gemini.manifest.compile_request(&gemini_unified)?;
     println!(

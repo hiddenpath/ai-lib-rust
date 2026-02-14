@@ -17,4 +17,6 @@ pub struct UnifiedRequest {
     /// - "none"
     /// - {"type":"function","function":{"name":"web_search"}}
     pub tool_choice: Option<serde_json::Value>,
+    /// JSON mode configuration for structured output
+    pub response_format: Option<crate::structured::JsonModeConfig>,
 }

@@ -9,8 +9,8 @@ fn is_fallbackable_error_class(error_class: &str) -> bool {
         // Quota / auth - per-provider; fallback can succeed
         "quota_exhausted" | "authentication" | "authorized_error" => true,
         // Client errors - don't fallback (will fail on any provider)
-        "invalid_request" | "permission_denied" | "not_found"
-        | "request_too_large" | "cancelled" => false,
+        "invalid_request" | "permission_denied" | "not_found" | "request_too_large"
+        | "cancelled" => false,
         // Unknown/other - conservative: don't fallback
         _ => false,
     }

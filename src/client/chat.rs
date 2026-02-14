@@ -378,6 +378,7 @@ impl<'a> ChatRequestBuilder<'a> {
             stream: self.stream,
             tools: self.tools,
             tool_choice: self.tool_choice,
+            response_format: None,
         }
     }
 }
