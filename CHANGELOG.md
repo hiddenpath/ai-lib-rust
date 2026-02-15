@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.1 - 2026-02-15
+
+### Fixed
+- Fix missing `response_format` field in `benches/request_compilation.rs` struct literals causing `cargo check --benches` failure
+- Note: crates.io v0.7.0 package was unaffected (bench files are excluded from published crate)
+
 ## 0.7.0 - 2026-02-15
 
 ### Added
