@@ -73,6 +73,7 @@ fn create_simple_request() -> UnifiedRequest {
         stream: true,
         tools: None,
         tool_choice: None,
+        response_format: None,
     }
 }
 
@@ -119,6 +120,7 @@ fn create_complex_request() -> UnifiedRequest {
         stream: true,
         tools: Some(vec![tool]),
         tool_choice: Some(serde_json::json!("auto")),
+        response_format: None,
     }
 }
 
@@ -148,6 +150,7 @@ fn create_long_conversation() -> UnifiedRequest {
         stream: true,
         tools: None,
         tool_choice: None,
+        response_format: None,
     }
 }
 
