@@ -1,4 +1,6 @@
-//! Request execution logic (single-attempt)
+//! 请求执行逻辑：单次尝试的流式与非流式请求执行。
+//!
+//! Request execution logic (single-attempt).
 
 use crate::client::types::CallStats;
 use crate::types::events::StreamingEvent;
@@ -105,7 +107,7 @@ impl AiClient {
                 .error_classification
                 .as_ref()
                 .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m| m.get(&status.to_string()).cloned())
+                .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
                 .unwrap_or_else(|| "http_error".to_string());
 
             // Protocol-driven fallback decision: use standard error_classes guidance
@@ -115,20 +117,29 @@ impl AiClient {
             let headers = resp.headers().clone();
             let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
             let body = resp.text().await.unwrap_or_default();
+
+            // Extract provider error code once and reuse
+            let provider_code = self.error_code_from_body(&body);
             if !should_fallback {
-                let code = self.error_code_from_body(&body);
-                should_fallback = Self::is_model_routing_error(status, code.as_deref(), &body);
+                should_fallback = Self::is_model_routing_error(status, provider_code.as_deref(), &body);
             }
 
             let retry_policy = self.manifest.retry_policy.as_ref();
             let retryable = retry_policy
                 .and_then(|p| p.retry_on_http_status.as_ref())
-                .map(|v| v.contains(&status))
+                .map(|v: &Vec<u16>| v.contains(&status))
                 .unwrap_or(false);
+
+            // Derive V2 standard error code for structured classification
+            let std_code = provider_code
+                .as_deref()
+                .and_then(crate::error_code::StandardErrorCode::from_provider_code)
+                .unwrap_or_else(|| crate::error_code::StandardErrorCode::from_http_status(status));
 
             info!(
                 http_status = status,
                 error_class = class.as_str(),
+                standard_code = std_code.code(),
                 endpoint = endpoint.path.as_str(),
                 duration_ms = start.elapsed().as_millis(),
                 "ai-lib-rust streaming request failed"
@@ -144,9 +155,10 @@ impl AiClient {
                 .with_request_id(client_request_id.clone())
                 .with_retryable(retryable)
                 .with_fallbackable(should_fallback)
+                .with_standard_code(std_code)
                 .with_source("execute_stream_once");
-            if let Some(ec) = self.error_code_from_body(&body) {
-                context = context.with_error_code(ec);
+            if let Some(ref ec) = provider_code {
+                context = context.with_error_code(ec.clone());
             }
             if let Some(up) = upstream {
                 context = context.with_details(format!("upstream_id: {}", up));
@@ -245,28 +257,32 @@ impl AiClient {
                     .error_classification
                     .as_ref()
                     .and_then(|ec| ec.by_http_status.as_ref())
-                    .and_then(|m| m.get(&status.to_string()).cloned())
+                    .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
                     .unwrap_or_else(|| "http_error".to_string());
 
-                let should_fallback = is_fallbackable_error_class(class.as_str());
-                let _request_id = PreflightExt::header_first(
-                    self,
-                    &headers,
-                    &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
-                );
+                let should_fallback = is_fallbackable_error_class(class.as_str())
+                    || Self::is_transient_server_status(status);
                 let body = resp.text().await.unwrap_or_default();
                 let retry_policy = self.manifest.retry_policy.as_ref();
                 let retryable = retry_policy
                     .and_then(|p| p.retry_on_http_status.as_ref())
-                    .map(|v| v.contains(&status))
+                    .map(|v: &Vec<u16>| v.contains(&status))
                     .unwrap_or(false);
                 let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
+
+                // Extract provider error code once and derive standard code
+                let provider_code = self.error_code_from_body(&body);
+                let std_code = provider_code
+                    .as_deref()
+                    .and_then(crate::error_code::StandardErrorCode::from_provider_code)
+                    .unwrap_or_else(|| crate::error_code::StandardErrorCode::from_http_status(status));
 
                 let mut context = crate::ErrorContext::new()
                     .with_status_code(status)
                     .with_request_id(client_request_id)
                     .with_retryable(retryable)
-                    .with_fallbackable(should_fallback || Self::is_transient_server_status(status))
+                    .with_fallbackable(should_fallback)
+                    .with_standard_code(std_code)
                     .with_source("execution_once");
 
                 if let Some(upstream_id) = PreflightExt::header_first(
@@ -276,8 +292,8 @@ impl AiClient {
                 ) {
                     context = context.with_details(format!("upstream_id: {}", upstream_id));
                 }
-                if let Some(ec) = self.error_code_from_body(&body) {
-                    context = context.with_error_code(ec);
+                if let Some(ref ec) = provider_code {
+                    context = context.with_error_code(ec.clone());
                 }
 
                 return Err(Error::Remote {
@@ -285,7 +301,7 @@ impl AiClient {
                     class,
                     message: body,
                     retryable,
-                    fallbackable: should_fallback || Self::is_transient_server_status(status),
+                    fallbackable: should_fallback,
                     retry_after_ms,
                     context: None,
                 }
@@ -311,6 +327,7 @@ impl AiClient {
 
             // Extract content using response_paths
             if let Some(paths) = &self.manifest.response_paths {
+                let paths: &std::collections::HashMap<String, String> = paths;
                 if let Some(content_path) = paths.get("content") {
                     if let Some(content) =
                         crate::utils::json_path::PathMapper::get_string(&json, content_path)
@@ -365,7 +382,7 @@ impl AiClient {
                 .error_classification
                 .as_ref()
                 .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m| m.get(&status.to_string()).cloned())
+                .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
                 .unwrap_or_else(|| "http_error".to_string());
 
             // Protocol-driven fallback decision: use standard error_classes guidance
@@ -379,37 +396,48 @@ impl AiClient {
                 &["x-request-id", "request-id", "x-amzn-requestid", "cf-ray"],
             );
             let body = resp.text().await.unwrap_or_default();
+
+            // Extract provider error code once and reuse
+            let provider_code = self.error_code_from_body(&body);
             if !should_fallback {
-                let code = self.error_code_from_body(&body);
-                should_fallback = Self::is_model_routing_error(status, code.as_deref(), &body);
+                should_fallback = Self::is_model_routing_error(status, provider_code.as_deref(), &body);
             }
             if !should_fallback && Self::is_transient_server_status(status) {
-                // Conservative default: 5xx errors are usually transient and worth trying fallbacks.
                 should_fallback = true;
             }
+
+            let retry_policy = self.manifest.retry_policy.as_ref();
+            let retryable = retry_policy
+                .and_then(|p| p.retry_on_http_status.as_ref())
+                .map(|v: &Vec<u16>| v.contains(&status))
+                .unwrap_or(false);
+            let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
+
+            // Derive V2 standard error code
+            let std_code = provider_code
+                .as_deref()
+                .and_then(crate::error_code::StandardErrorCode::from_provider_code)
+                .unwrap_or_else(|| crate::error_code::StandardErrorCode::from_http_status(status));
+
             info!(
                 http_status = status,
                 error_class = class.as_str(),
+                standard_code = std_code.code(),
                 request_id = request_id.as_deref().unwrap_or(""),
                 endpoint = endpoint.path.as_str(),
                 duration_ms = start.elapsed().as_millis(),
                 "ai-lib-rust request failed"
             );
-            let retry_policy = self.manifest.retry_policy.as_ref();
-            let retryable = retry_policy
-                .and_then(|p| p.retry_on_http_status.as_ref())
-                .map(|v| v.contains(&status))
-                .unwrap_or(false);
-            let retry_after_ms = PreflightExt::retry_after_ms(self, &headers);
 
             let mut context = crate::ErrorContext::new()
                 .with_status_code(status)
                 .with_request_id(client_request_id.clone())
                 .with_retryable(retryable)
                 .with_fallbackable(should_fallback)
+                .with_standard_code(std_code)
                 .with_source("execute_once_streaming");
-            if let Some(ec) = self.error_code_from_body(&body) {
-                context = context.with_error_code(ec);
+            if let Some(ref ec) = provider_code {
+                context = context.with_error_code(ec.clone());
             }
             if let Some(up) = request_id {
                 context = context.with_details(format!("upstream_id: {}", up));

@@ -14,6 +14,9 @@ check_output*.txt
 error.txt
 connectivity_report.txt
 
+# Work documents and internal implementation plans (not for remote)
+work/
+
 # Work / internal documents (do not publish)
 *REPORT*.md
 *REPORT*.txt
@@ -29,6 +32,16 @@ connectivity_report.txt
 *AUDIT*.txt
 *BACKLOG*.md
 *IMPROVEMENTS*.md
+
+# Chinese-named internal documents
+*审查*.md
+*计划*.md
+*报告*.md
+*分析*.md
+*回溯*.md
+*进度*.md
+
+# Internal documentation directories
 docs/runtime_features.md
 docs/AUDIT_REPORTS/
 docs/design/

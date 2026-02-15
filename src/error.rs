@@ -40,6 +40,7 @@
 //! );
 //! ```
 
+use crate::error_code::StandardErrorCode;
 use crate::pipeline::PipelineError;
 use crate::protocol::ProtocolError;
 use thiserror::Error;
@@ -69,6 +70,8 @@ pub struct ErrorContext {
     pub retryable: Option<bool>,
     /// Flag indicating if the error should trigger a fallback
     pub fallbackable: Option<bool>,
+    /// AI-Protocol V2 standard error code
+    pub standard_code: Option<StandardErrorCode>,
 }
 
 impl ErrorContext {
@@ -83,6 +86,7 @@ impl ErrorContext {
             error_code: None,
             retryable: None,
             fallbackable: None,
+            standard_code: None,
         }
     }
 
@@ -128,6 +132,11 @@ impl ErrorContext {
 
     pub fn with_fallbackable(mut self, fallbackable: bool) -> Self {
         self.fallbackable = Some(fallbackable);
+        self
+    }
+
+    pub fn with_standard_code(mut self, code: StandardErrorCode) -> Self {
+        self.standard_code = Some(code);
         self
     }
 }
@@ -193,45 +202,68 @@ pub enum Error {
     },
 }
 
-// Helper function to format error context for display
+// Helper function to format error context for display.
+// Uses a single String buffer to minimize allocations.
 fn format_context(ctx: &ErrorContext) -> String {
-    let mut parts = Vec::new();
-    if let Some(ref field) = ctx.field_path {
-        parts.push(format!("field: {}", field));
-    }
-    if let Some(ref details) = ctx.details {
-        parts.push(format!("details: {}", details));
-    }
-    if let Some(ref source) = ctx.source {
-        parts.push(format!("source: {}", source));
-    }
-    if let Some(ref id) = ctx.request_id {
-        parts.push(format!("request_id: {}", id));
-    }
-    if let Some(code) = ctx.status_code {
-        parts.push(format!("status: {}", code));
-    }
-    if let Some(ref code) = ctx.error_code {
-        parts.push(format!("error_code: {}", code));
-    }
-    if let Some(retryable) = ctx.retryable {
-        parts.push(format!("retryable: {}", retryable));
-    }
-    if let Some(fallbackable) = ctx.fallbackable {
-        parts.push(format!("fallbackable: {}", fallbackable));
-    }
+    use std::fmt::Write;
+    let mut buf = String::new();
 
-    let ctx_str = if parts.is_empty() {
-        String::new()
-    } else {
-        format!(" [{}]", parts.join(", "))
-    };
+    // Estimate whether we have any metadata to show
+    let has_meta = ctx.field_path.is_some()
+        || ctx.details.is_some()
+        || ctx.source.is_some()
+        || ctx.request_id.is_some()
+        || ctx.status_code.is_some()
+        || ctx.error_code.is_some()
+        || ctx.retryable.is_some()
+        || ctx.fallbackable.is_some()
+        || ctx.standard_code.is_some();
+
+    if has_meta {
+        buf.push_str(" [");
+        let mut first = true;
+        macro_rules! append_field {
+            ($label:expr, $val:expr) => {
+                if let Some(ref v) = $val {
+                    if !first { buf.push_str(", "); }
+                    let _ = write!(buf, "{}: {}", $label, v);
+                    first = false;
+                }
+            };
+        }
+        append_field!("field", ctx.field_path);
+        append_field!("details", ctx.details);
+        append_field!("source", ctx.source);
+        append_field!("request_id", ctx.request_id);
+        if let Some(code) = ctx.status_code {
+            if !first { buf.push_str(", "); }
+            let _ = write!(buf, "status: {}", code);
+            first = false;
+        }
+        append_field!("error_code", ctx.error_code);
+        if let Some(r) = ctx.retryable {
+            if !first { buf.push_str(", "); }
+            let _ = write!(buf, "retryable: {}", r);
+            first = false;
+        }
+        if let Some(f) = ctx.fallbackable {
+            if !first { buf.push_str(", "); }
+            let _ = write!(buf, "fallbackable: {}", f);
+            #[allow(unused_assignments)]
+            { first = false; }
+        }
+        if let Some(ref std_code) = ctx.standard_code {
+            if !first { buf.push_str(", "); }
+            let _ = write!(buf, "standard_code: {}", std_code.code());
+        }
+        buf.push(']');
+    }
 
     if let Some(ref hint) = ctx.hint {
-        format!("{}\n💡 Hint: {}", ctx_str, hint)
-    } else {
-        ctx_str
+        let _ = write!(buf, "\n💡 Hint: {}", hint);
     }
+
+    buf
 }
 
 fn format_optional_context(ctx: &Option<ErrorContext>) -> String {
@@ -316,6 +348,37 @@ impl Error {
                 context: Some(ref c),
                 ..
             } => Some(c),
+            _ => None,
+        }
+    }
+
+    /// Returns the AI-Protocol V2 standard error code when available.
+    ///
+    /// For `Remote` errors, derives the code from the error class if not set in context.
+    /// Other variants return the standard code from their `ErrorContext` when present.
+    pub fn standard_code(&self) -> Option<StandardErrorCode> {
+        match self {
+            Error::Remote {
+                status,
+                class,
+                context,
+                ..
+            } => context
+                .as_ref()
+                .and_then(|c| c.standard_code)
+                .or_else(|| {
+                    // Derive from class name, or from HTTP status if class unknown
+                    let from_class = StandardErrorCode::from_error_class(class);
+                    if from_class == StandardErrorCode::Unknown {
+                        Some(StandardErrorCode::from_http_status(*status))
+                    } else {
+                        Some(from_class)
+                    }
+                }),
+            Error::Configuration { context, .. }
+            | Error::Validation { context, .. }
+            | Error::Runtime { context, .. }
+            | Error::Unknown { context, .. } => context.standard_code,
             _ => None,
         }
     }

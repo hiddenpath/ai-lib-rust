@@ -45,7 +45,7 @@ impl PolicyEngine {
         let manifest = &self.manifest;
 
         // Check for Tooling support
-        if !request.tools.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
+        if !request.tools.as_ref().map(|t: &Vec<crate::types::tool::ToolDefinition>| t.is_empty()).unwrap_or(true) {
             if !manifest.supports_capability("tools") {
                 return Err(Error::validation_with_context(
                     "Model does not support tool calling",
@@ -70,7 +70,7 @@ impl PolicyEngine {
         let has_multimodal = request
             .messages
             .iter()
-            .any(|m| m.contains_image() || m.contains_audio());
+            .any(|m: &crate::types::message::Message| m.contains_image() || m.contains_audio());
         if has_multimodal {
             let supports_multimodal = manifest.supports_capability("multimodal")
                 || manifest.supports_capability("vision")

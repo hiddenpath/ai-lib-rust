@@ -1,4 +1,6 @@
-//! Preflight checks and rate limit management
+//! 预检逻辑：请求发送前的速率限制、熔断器和背压检查。
+//!
+//! Preflight checks and rate limit management.
 
 use crate::{Error, ErrorContext, Result};
 use reqwest::header::HeaderMap;
@@ -62,13 +64,13 @@ impl PreflightExt for AiClient {
                     .requests_remaining
                     .as_ref()
                     .and_then(|h| self.header_first(headers, &[h]))
-                    .and_then(|s| s.parse::<u64>().ok());
+                    .and_then(|s: String| s.parse::<u64>().ok());
 
                 let reset_after = conf
                     .requests_reset
                     .as_ref()
                     .and_then(|h| self.header_first(headers, &[h]))
-                    .and_then(|s| {
+                    .and_then(|s: String| {
                         if let Ok(val) = s.parse::<u64>() {
                             if val > 1_000_000_000 {
                                 // Likely an epoch timestamp
@@ -76,6 +78,7 @@ impl PreflightExt for AiClient {
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .ok()?
                                     .as_secs();
+                                let val: u64 = val;
                                 Some(std::time::Duration::from_secs(val.saturating_sub(now)))
                             } else {
                                 // Likely seconds or ms? Standardize on seconds for now.

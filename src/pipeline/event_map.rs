@@ -1,4 +1,6 @@
-//! Event mapping (JSON Value -> StreamingEvent)
+//! 事件映射：将 JSON 帧转换为统一的 StreamingEvent。
+//!
+//! Event mapping (JSON Value -> StreamingEvent).
 //!
 //! Two modes:
 //! - If manifest provides `streaming.event_map`, use rule-based mapping
@@ -40,6 +42,8 @@ impl RuleBasedEventMapper {
             let mut extract = Vec::new();
             if let Some(map) = &r.fields {
                 for (k, v) in map {
+                    let k: &String = k;
+                    let v: &String = v;
                     extract.push((k.clone(), v.clone()));
                 }
             }

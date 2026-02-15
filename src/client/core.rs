@@ -1,4 +1,6 @@
-//! Core AI client implementation
+//! 核心客户端实现：管理协议加载、传输、流水线及弹性策略。
+//!
+//! Core AI client implementation.
 
 use crate::client::types::CallStats;
 use crate::protocol::ProtocolLoader;
@@ -21,7 +23,7 @@ pub struct AiClient {
     pub(crate) fallbacks: Vec<String>,
     pub(crate) model_id: String,
     pub(crate) strict_streaming: bool,
-    pub(crate) feedback: Arc<dyn crate::telemetry::FeedbackSink>,
+    pub(crate) feedback: Arc<dyn crate::feedback::FeedbackSink>,
     pub(crate) inflight: Option<Arc<tokio::sync::Semaphore>>,
     pub(crate) max_inflight: Option<usize>,
     pub(crate) attempt_timeout: Option<std::time::Duration>,
@@ -210,7 +212,7 @@ impl AiClient {
     }
 
     /// Report user feedback (optional). This delegates to the injected `FeedbackSink`.
-    pub async fn report_feedback(&self, event: crate::telemetry::FeedbackEvent) -> Result<()> {
+    pub async fn report_feedback(&self, event: crate::feedback::FeedbackEvent) -> Result<()> {
         self.feedback.report(event).await
     }
 
@@ -231,9 +233,6 @@ impl AiClient {
         Ok(self.call_model_with_stats(request).await?.0)
     }
 
-    /// Call a model and also return per-call stats (latency, retries, request ids, endpoint, usage, etc.).
-    ///
-    /// This is intended for higher-level model selection and observability.
     /// Call a model and also return per-call stats (latency, retries, request ids, endpoint, usage, etc.).
     ///
     /// This is intended for higher-level model selection and observability.

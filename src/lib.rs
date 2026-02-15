@@ -24,7 +24,7 @@
 //! - **Unified Client**: [`AiClient`] provides a single entry point for all AI interactions
 //! - **Protocol Loading**: Load and validate protocol manifests from local files or remote URLs
 //! - **Streaming Pipeline**: Configurable operator pipeline for response processing
-//! - **Batching**: Efficient request batching with [`batch::BatchCollector`]
+//! - **Batching**: Efficient request batching with [`batch::BatchCollector`] (requires `batch` feature)
 //! - **Caching**: Response caching with pluggable backends via [`cache`] module
 //! - **Resilience**: Circuit breaker and rate limiting via [`resilience`] module
 //! - **Content Safety**: Guardrails for content filtering via [`guardrails`] module
@@ -62,33 +62,42 @@
 //! | [`client`] | AI client implementation and builders |
 //! | [`pipeline`] | Streaming response pipeline operators |
 //! | [`types`] | Core type definitions (messages, events, tools) |
-//! | [`batch`] | Request batching and parallel execution |
+//! | [`batch`] | Request batching and parallel execution (requires `batch` feature) |
 //! | [`cache`] | Response caching with multiple backends |
-//! | [`embeddings`] | Embedding generation and vector operations |
+//! | [`embeddings`] | Embedding generation and vector operations (requires `embeddings` feature) |
 //! | [`resilience`] | Circuit breaker and rate limiting |
-//! | [`guardrails`] | Content filtering and safety checks |
-//! | [`tokens`] | Token counting and cost estimation |
-//! | [`telemetry`] | Optional feedback and telemetry collection |
+//! | [`guardrails`] | Content filtering and safety checks (requires `guardrails` feature) |
+//! | [`tokens`] | Token counting and cost estimation (requires `tokens` feature) |
+//! | [`telemetry`] | Optional feedback and telemetry collection (requires `telemetry` feature) |
 
-pub mod batch;
+// Core modules (always available)
 pub mod cache;
 pub mod client;
-pub mod embeddings;
-pub mod guardrails;
+pub mod feedback;
 pub mod pipeline;
 pub mod plugins;
 pub mod protocol;
 pub mod resilience;
 pub mod structured;
-pub mod telemetry;
-pub mod tokens;
 pub mod transport;
 pub mod types;
 pub mod utils;
 
+// Capability-based modules (feature-gated)
+#[cfg(feature = "batch")]
+pub mod batch;
+#[cfg(feature = "embeddings")]
+pub mod embeddings;
+#[cfg(feature = "guardrails")]
+pub mod guardrails;
+#[cfg(feature = "tokens")]
+pub mod tokens;
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+
+// Infrastructure modules (feature-gated)
 #[cfg(feature = "routing_mvp")]
 pub mod routing;
-
 #[cfg(feature = "interceptors")]
 pub mod interceptors;
 
@@ -98,7 +107,9 @@ pub use client::CancelHandle;
 pub use client::ChatBatchRequest;
 pub use client::EndpointExt;
 pub use client::{AiClient, AiClientBuilder};
-pub use telemetry::{FeedbackEvent, FeedbackSink};
+
+// Feedback types: always available from feedback module; full telemetry re-exports when feature is on
+pub use feedback::{FeedbackEvent, FeedbackSink};
 pub use types::{
     events::StreamingEvent,
     message::{Message, MessageRole},
@@ -126,4 +137,6 @@ pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = PipeResult<T>> + Send + 'a
 
 /// Error type for the library
 pub mod error;
+pub mod error_code;
 pub use error::{Error, ErrorContext};
+pub use error_code::StandardErrorCode;

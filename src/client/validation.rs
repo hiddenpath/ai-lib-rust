@@ -1,4 +1,6 @@
-//! Manifest validation
+//! 协议清单校验：验证版本兼容性和流式配置完整性。
+//!
+//! Manifest validation.
 
 use crate::protocol::ProtocolManifest;
 use crate::{Error, ErrorContext, Result};
@@ -72,7 +74,7 @@ pub(crate) fn validate_manifest(manifest: &ProtocolManifest, strict_streaming: b
             if streaming
                 .content_path
                 .as_deref()
-                .map(|s| s.trim().is_empty())
+                .map(|s: &str| s.trim().is_empty())
                 .unwrap_or(true)
             {
                 return Err(Error::validation_with_context(
@@ -87,7 +89,7 @@ pub(crate) fn validate_manifest(manifest: &ProtocolManifest, strict_streaming: b
                 && streaming
                     .tool_call_path
                     .as_deref()
-                    .map(|s| s.trim().is_empty())
+                    .map(|s: &str| s.trim().is_empty())
                     .unwrap_or(true)
             {
                 return Err(Error::validation_with_context(

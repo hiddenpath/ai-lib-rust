@@ -291,17 +291,5 @@ mod tests {
         }
         
         assert_eq!(collector.len(), 100);
-pub enum BatchAddResult {
-    Added { count: usize },
-    ShouldFlush { count: usize },
-}
-impl BatchAddResult {
-    pub fn should_flush(&self) -> bool {
-        matches!(self, BatchAddResult::ShouldFlush { .. })
-    }
-    pub fn count(&self) -> usize {
-        match self {
-            BatchAddResult::Added { count } | BatchAddResult::ShouldFlush { count } => *count,
-        }
     }
 }

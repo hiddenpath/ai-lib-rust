@@ -1,7 +1,8 @@
 //! Endpoint resolution and service calls
 
-use crate::protocol::{EndpointConfig, ProtocolError};
+use crate::protocol::{EndpointConfig, ProtocolError, ServiceConfig};
 use crate::{Error, Result};
+use std::collections::HashMap;
 use std::future::Future;
 
 use super::core::AiClient;
@@ -24,7 +25,7 @@ impl EndpointExt for AiClient {
         self.manifest
             .endpoints
             .as_ref()
-            .and_then(|eps| eps.get(name))
+            .and_then(|eps: &HashMap<String, EndpointConfig>| eps.get(name))
             .ok_or_else(|| {
                 Error::Protocol(ProtocolError::NotFound {
                     id: name.to_string(),
@@ -39,7 +40,7 @@ impl EndpointExt for AiClient {
             .manifest
             .services
             .as_ref()
-            .and_then(|services| services.get(service_name))
+            .and_then(|services: &HashMap<String, ServiceConfig>| services.get(service_name))
             .ok_or_else(|| {
                 Error::Protocol(ProtocolError::NotFound {
                     id: service_name.to_string(),

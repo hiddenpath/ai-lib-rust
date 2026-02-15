@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.0 - 2026-02-15
+
+### Added
+
+#### V2 Standard Error Codes (`error_code.rs`)
+- 13-variant `StandardErrorCode` enum aligned with AI-Protocol V2 specification (E1001–E9999)
+- `from_provider_code()`: Maps provider-specific error codes (e.g., `overloaded_error`, `context_length_exceeded`) to standard codes
+- `from_error_class()`: Maps error class names to standard codes
+- `from_http_status()`: Maps HTTP status codes to standard codes (including Anthropic 529)
+- Each code carries `retryable()`, `fallbackable()`, and `category()` metadata
+
+#### Feature Flags (Cargo features)
+- 7 capability features: `embeddings`, `batch`, `guardrails`, `tokens`, `telemetry`, `routing_mvp`, `interceptors`
+- `full` meta-feature for convenience
+- Core feedback types (`FeedbackSink`, `FeedbackEvent`) always compiled; telemetry sinks feature-gated
+
+#### Structured Output (`structured/`)
+- JSON mode with schema validation
+- Response format constraint support
+
+#### Compliance Testing
+- Cross-runtime compliance test runner (`tests/compliance.rs`)
+- 20/20 test cases passing against `ai-protocol/tests/compliance/cases/`
+
+### Changed
+
+#### Error Classification Improvements
+- All error paths now attach V2 `StandardErrorCode` to `ErrorContext` (eliminates runtime re-derivation)
+- Provider error codes extracted once per error response (removed duplicate `error_code_from_body()` calls)
+- Structured logging now includes `standard_code` field for observability
+- `format_context()` optimized: single-buffer write instead of Vec<String> allocation
+
+#### Documentation
+- Added Chinese one-line description to all module doc headers (11 modules)
+- All remaining documentation in English per project convention
+
+#### .gitignore
+- Added Chinese-named internal document patterns
+- Strengthened wildcard patterns for work documents
+
+### Fixed
+- Duplicate doc comment on `call_model_with_stats()` method
+- Inconsistent `should_fallback` computation in non-streaming error path
+
 ## 0.6.6 - 2026-02-06
 
 ### Added

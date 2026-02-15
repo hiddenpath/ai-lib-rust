@@ -33,9 +33,49 @@ The library is organized into three layers:
 - **Client**: Unified client interface
 - **Types**: Standard type system based on AI-Protocol `standard_schema`
 
+## 🔄 V2 Protocol Alignment
+
+Starting with v0.6.6, `ai-lib-rust` aligns with the **AI-Protocol V2** specification:
+
+### Standard Error Codes (V2)
+
+All provider errors are classified into 13 standard error codes with unified retry/fallback semantics:
+
+| Code | Name | Retryable | Fallbackable |
+|------|------|-----------|--------------|
+| E1001 | `invalid_request` | No | No |
+| E1002 | `authentication` | No | Yes |
+| E1003 | `permission_denied` | No | No |
+| E1004 | `not_found` | No | No |
+| E1005 | `request_too_large` | No | No |
+| E2001 | `rate_limited` | Yes | Yes |
+| E2002 | `quota_exhausted` | No | Yes |
+| E3001 | `server_error` | Yes | Yes |
+| E3002 | `overloaded` | Yes | Yes |
+| E3003 | `timeout` | Yes | Yes |
+| E4001 | `conflict` | Yes | No |
+| E4002 | `cancelled` | No | No |
+| E9999 | `unknown` | No | No |
+
+Classification follows a priority pipeline: provider-specific error code → HTTP status override → standard HTTP mapping → `E9999`.
+
+### Compliance Tests
+
+Cross-runtime behavioral consistency is verified by a shared YAML-based test suite from the `ai-protocol` repository:
+
+```bash
+# Run compliance tests
+cargo test --test compliance
+
+# With explicit compliance directory
+COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test --test compliance
+```
+
+For details, see [CROSS_RUNTIME.md](https://github.com/hiddenpath/ai-protocol/blob/main/docs/CROSS_RUNTIME.md).
+
 ## 🧩 Feature flags & re-exports
 
-`ai-lib-rust` keeps the runtime core small, and exposes optional higher-level helpers behind feature flags.
+`ai-lib-rust` keeps the runtime core small, and exposes optional capabilities behind feature flags. This aligns with the V2 "lean core, progressive complexity" design principle.
 
 For a deeper overview, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -43,15 +83,31 @@ For a deeper overview, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   - `AiClient`, `AiClientBuilder`, `CancelHandle`, `CallStats`, `ChatBatchRequest`, `EndpointExt`
   - `Message`, `MessageRole`, `StreamingEvent`, `ToolCall`
   - `Result<T>`, `Error`, `ErrorContext`
-- **Feature-gated re-exports**:
+  - `FeedbackEvent`, `FeedbackSink` (core feedback types)
+- **Capability features (V2 aligned)**:
+  - **`embeddings`**: embedding generation (`EmbeddingClient`)
+  - **`batch`**: batch API processing (`BatchExecutor`)
+  - **`guardrails`**: input/output validation
+  - **`tokens`**: token counting and cost estimation
+  - **`telemetry`**: advanced observability sinks (`InMemoryFeedbackSink`, `ConsoleFeedbackSink`, etc.)
+- **Infrastructure features**:
   - **`routing_mvp`**: pure logic model management helpers (`CustomModelManager`, `ModelArray`, etc.)
   - **`interceptors`**: application-layer call hooks (`InterceptorPipeline`, `Interceptor`, `RequestContext`)
+- **Meta-feature**:
+  - **`full`**: enables all capability and infrastructure features
 
 Enable with:
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.6", features = ["routing_mvp", "interceptors"] }
+# Lean core (default)
+ai-lib-rust = "0.6.6"
+
+# With specific capabilities
+ai-lib-rust = { version = "0.6.6", features = ["embeddings", "telemetry"] }
+
+# Everything enabled
+ai-lib-rust = { version = "0.6.6", features = ["full"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -366,7 +422,14 @@ See the `examples/` directory:
 ## 🧪 Testing
 
 ```bash
+# Run all tests
 cargo test
+
+# Run compliance tests (cross-runtime consistency)
+cargo test --test compliance
+
+# Run with all features enabled
+cargo test --features full
 ```
 
 ## 📦 Batch (Chat)
@@ -402,10 +465,11 @@ Override concurrency with:
 
 Contributions are welcome! Please ensure that:
 
-1. All protocol configurations follow the AI-Protocol v1.5 specification
+1. All protocol configurations follow the AI-Protocol specification (v1.5 / V2)
 2. New operators are properly documented
 3. Tests are included for new features
-4. Code follows Rust best practices and passes `cargo clippy`
+4. Compliance tests pass for cross-runtime behaviors (`cargo test --test compliance`)
+5. Code follows Rust best practices and passes `cargo clippy`
 
 ## 📄 License
 
@@ -418,7 +482,8 @@ at your option.
 
 ## 🔗 Related Projects
 
-- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): Protocol specification (v1.5)
+- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): Protocol specification (v1.5 / V2)
+- [ai-lib-python](https://github.com/hiddenpath/ai-lib-python): Python runtime implementation
 
 ---
 

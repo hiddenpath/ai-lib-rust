@@ -33,6 +33,46 @@
 - **Client**: 统一客户端接口
 - **Types**: 基于 AI-Protocol `standard_schema` 的标准类型系统
 
+## 🔄 V2 协议对齐
+
+从 v0.6.6 开始，`ai-lib-rust` 与 **AI-Protocol V2** 规范对齐：
+
+### 标准错误码（V2）
+
+所有 provider 错误被分类为 13 个标准错误码，具有统一的重试/回退语义：
+
+| 错误码 | 名称 | 可重试 | 可回退 |
+|--------|------|--------|--------|
+| E1001 | `invalid_request` | 否 | 否 |
+| E1002 | `authentication` | 否 | 是 |
+| E1003 | `permission_denied` | 否 | 否 |
+| E1004 | `not_found` | 否 | 否 |
+| E1005 | `request_too_large` | 否 | 否 |
+| E2001 | `rate_limited` | 是 | 是 |
+| E2002 | `quota_exhausted` | 否 | 是 |
+| E3001 | `server_error` | 是 | 是 |
+| E3002 | `overloaded` | 是 | 是 |
+| E3003 | `timeout` | 是 | 是 |
+| E4001 | `conflict` | 是 | 否 |
+| E4002 | `cancelled` | 否 | 否 |
+| E9999 | `unknown` | 否 | 否 |
+
+分类遵循优先级管道：provider 特定错误码 → HTTP 状态码覆盖 → 标准 HTTP 映射 → `E9999`。
+
+### 兼容性测试
+
+跨运行时行为一致性通过 `ai-protocol` 仓库中的共享 YAML 测试套件验证：
+
+```bash
+# 运行兼容性测试
+cargo test --test compliance
+
+# 指定兼容性测试目录
+COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test --test compliance
+```
+
+详细信息请参阅 [CROSS_RUNTIME.md](https://github.com/hiddenpath/ai-protocol/blob/main/docs/CROSS_RUNTIME.md)。
+
 ## 🧩 Feature 与 re-export（对外便利入口）
 
 `ai-lib-rust` 的 runtime 核心保持精简；一些“更上层、更偏应用”的工具通过 feature opt-in 暴露，并在 crate root 做 re-export 以提升易用性。
@@ -262,7 +302,7 @@ futures = "0.3"
 对每个 base path，provider manifest 的解析顺序为（向后兼容）：
 `dist/v1/providers/<id>.json` → `v1/providers/<id>.yaml`。
 
-协议 manifest 应遵循 AI-Protocol v1.5 规范结构。运行时根据 AI-Protocol 仓库中的官方 JSON Schema 验证 manifest。
+协议 manifest 应遵循 AI-Protocol 规范（v1.5 / V2）结构。运行时根据 AI-Protocol 仓库中的官方 JSON Schema 验证 manifest。
 
 ## 🔐 Provider 要求（API 密钥）
 
@@ -434,7 +474,7 @@ let results = client.chat_batch_smart(reqs).await;
 
 欢迎贡献！请确保：
 
-1. 所有协议配置遵循 AI-Protocol v1.5 规范
+1. 所有协议配置遵循 AI-Protocol 规范（v1.5 / V2）
 2. 新算子有适当文档
 3. 新功能包含测试
 4. 代码遵循 Rust 最佳实践并通过 `cargo clippy`
@@ -450,7 +490,8 @@ let results = client.chat_batch_smart(reqs).await;
 
 ## 🔗 相关项目
 
-- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): 协议规范（v1.5）
+- [AI-Protocol](https://github.com/hiddenpath/ai-protocol): 协议规范（v1.5 / V2）
+- [ai-lib-python](https://github.com/hiddenpath/ai-lib-python): Python 运行时实现
 
 ---
 

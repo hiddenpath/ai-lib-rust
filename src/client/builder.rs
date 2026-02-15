@@ -1,4 +1,5 @@
 use crate::client::core::AiClient;
+use crate::feedback::FeedbackSink;
 use crate::protocol::ProtocolLoader;
 use crate::Result;
 use std::sync::Arc;
@@ -12,7 +13,7 @@ pub struct AiClientBuilder {
     hot_reload: bool,
     fallbacks: Vec<String>,
     strict_streaming: bool,
-    feedback: Arc<dyn crate::telemetry::FeedbackSink>,
+    feedback: Arc<dyn FeedbackSink>,
     max_inflight: Option<usize>,
     breaker: Option<Arc<crate::resilience::circuit_breaker::CircuitBreaker>>,
     rate_limiter: Option<Arc<crate::resilience::rate_limiter::RateLimiter>>,
@@ -27,7 +28,7 @@ impl AiClientBuilder {
             hot_reload: false,
             fallbacks: Vec::new(),
             strict_streaming: false,
-            feedback: crate::telemetry::noop_sink(),
+            feedback: crate::feedback::noop_sink(),
             max_inflight: None,
             breaker: None,
             rate_limiter: None,
@@ -62,7 +63,7 @@ impl AiClientBuilder {
     }
 
     /// Inject a feedback sink. Default is a no-op sink.
-    pub fn feedback_sink(mut self, sink: Arc<dyn crate::telemetry::FeedbackSink>) -> Self {
+    pub fn feedback_sink(mut self, sink: Arc<dyn FeedbackSink>) -> Self {
         self.feedback = sink;
         self
     }

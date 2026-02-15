@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.6.6"
+version = "0.7.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -94,11 +94,19 @@ harness = false
 # Keep runtime core lean; opt-in progressive complexity to preserve a stable API surface.
 default = []
 
-# Model management / routing helpers (pure logic layer; optional).
-routing_mvp = []
+# Capability-based features (V2 protocol alignment)
+embeddings = []
+batch = []
+guardrails = []
+tokens = []
+telemetry = []
 
-# Request/response interceptor hooks (logging/metrics/custom retry wrappers at app layer).
+# Infrastructure features
+routing_mvp = []
 interceptors = []
+
+# Meta-features for convenience
+full = ["embeddings", "batch", "guardrails", "tokens", "telemetry", "routing_mvp", "interceptors"]
 
 [[example]]
 name = "basic_usage"
@@ -119,6 +127,7 @@ path = "examples/connectivity_report.rs"
 [[example]]
 name = "guardrails_usage"
 path = "examples/guardrails_usage.rs"
+required-features = ["guardrails"]
 
 [[example]]
 name = "resilience_patterns"
@@ -127,10 +136,12 @@ path = "examples/resilience_patterns.rs"
 [[example]]
 name = "batch_processing"
 path = "examples/batch_processing.rs"
+required-features = ["batch"]
 
 [[example]]
 name = "embeddings_similarity"
 path = "examples/embeddings_similarity.rs"
+required-features = ["embeddings"]
 
 [[bin]]
 name = "validate_protocols"
