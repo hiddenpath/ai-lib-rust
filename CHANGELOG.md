@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.8.0 - 2026-02-16
+
+### Added
+
+#### V2 Protocol Runtime Support (`protocol/v2/`)
+- V2 three-ring manifest parser: Ring1 (core skeleton), Ring2 (capability mapping), Ring3 (advanced extensions)
+- `ManifestV2` typed model with auto-promotion from V1 manifests
+- `CapabilitiesV2` structured capability declaration (required/optional)
+- Protocol version "2.0" added to supported versions for validation
+
+#### Provider Drivers (`drivers/`)
+- `ProviderDriver` trait abstraction for provider-specific API handling
+- OpenAI-compatible driver (covers OpenAI, DeepSeek, Moonshot, Qwen, Groq, etc.)
+- Anthropic Messages API driver with beta header support
+- Gemini GenerateContent API driver
+- Auto-detection of API style from provider manifest
+
+#### MCP Tool Bridge (`mcp/`, feature: `mcp`)
+- `McpToolBridge`: Namespace-based tool conversion between MCP and AI-Protocol formats
+- `mcp_tools_to_protocol()`: Convert MCP tool definitions to protocol-compatible function tools
+- `protocol_call_to_mcp()`: Route protocol tool calls back to MCP invocations
+- `mcp_result_to_protocol()`: Convert MCP results to protocol format
+- Server filtering and namespace collision detection
+
+#### Computer Use Abstraction (`computer_use/`, feature: `computer_use`)
+- `ComputerAction` enum: screenshot, click, type, scroll, browser_navigate, key_press
+- `SafetyPolicy`: Configurable safety enforcement with domain allowlists and action limits
+- `extract_provider_config()`: Parse provider-specific CU configuration from manifests
+- Implementation style detection (screen-based vs tool-based)
+
+#### Extended Multimodal (`multimodal/`, feature: `multimodal`)
+- `MultimodalCapabilities`: Input/output modality declarations with format validation
+- Vision, audio, video modality support with format and size validation
+- `validate_content_modalities()`: Check content blocks against provider capabilities
+
+#### Capability Registry (`registry/`)
+- `CapabilityRegistry`: Dynamic capability detection from V2 manifests
+- Status reporting for active, optional, and unavailable capabilities
+
+#### CLI Tool (`bin/ai_protocol_cli`)
+- `validate`: Validate all provider manifests (V1 + V2) and JSON schemas
+- `info <provider>`: Show provider capabilities, MCP, Computer Use, multimodal details
+- `list`: List all available providers with version info
+- `check-compat <manifest>`: Check runtime feature compatibility requirements
+- Cross-platform path resolution (removed hardcoded Windows paths)
+
+### Changed
+- V2 protocol version "2.0" now accepted in manifest validation
+- README updated with V2 features, new feature flags, and version 0.8.0 references
+
 ## 0.7.1 - 2026-02-15
 
 ### Fixed

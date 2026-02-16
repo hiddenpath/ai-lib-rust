@@ -52,6 +52,7 @@ pub mod loader;
 pub mod manifest;
 pub mod request;
 pub mod schema;
+pub mod v2;
 pub mod validator;
 
 // Re-export main types for convenient access
@@ -61,4 +62,5 @@ pub use loader::ProtocolLoader;
 pub use manifest::ProtocolManifest;
 pub use request::UnifiedRequest;
 pub use schema::ProtocolSchema;
+pub use v2::{ManifestV2, CapabilitiesV2, Capability, FeatureFlags};
 pub use validator::ProtocolValidator;

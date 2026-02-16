@@ -73,10 +73,12 @@
 // Core modules (always available)
 pub mod cache;
 pub mod client;
+pub mod drivers;
 pub mod feedback;
 pub mod pipeline;
 pub mod plugins;
 pub mod protocol;
+pub mod registry;
 pub mod resilience;
 pub mod structured;
 pub mod transport;
@@ -86,10 +88,16 @@ pub mod utils;
 // Capability-based modules (feature-gated)
 #[cfg(feature = "batch")]
 pub mod batch;
+#[cfg(feature = "computer_use")]
+pub mod computer_use;
 #[cfg(feature = "embeddings")]
 pub mod embeddings;
 #[cfg(feature = "guardrails")]
 pub mod guardrails;
+#[cfg(feature = "mcp")]
+pub mod mcp;
+#[cfg(feature = "multimodal")]
+pub mod multimodal;
 #[cfg(feature = "tokens")]
 pub mod tokens;
 #[cfg(feature = "telemetry")]

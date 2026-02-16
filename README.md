@@ -35,7 +35,7 @@ The library is organized into three layers:
 
 ## 🔄 V2 Protocol Alignment
 
-Starting with v0.6.6, `ai-lib-rust` aligns with the **AI-Protocol V2** specification:
+Starting with v0.7.0, `ai-lib-rust` aligns with the **AI-Protocol V2** specification. V0.8.0 adds full V2 runtime support including V2 manifest parsing, provider drivers, MCP, Computer Use, and extended multimodal.
 
 ### Standard Error Codes (V2)
 
@@ -90,6 +90,10 @@ For a deeper overview, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   - **`guardrails`**: input/output validation
   - **`tokens`**: token counting and cost estimation
   - **`telemetry`**: advanced observability sinks (`InMemoryFeedbackSink`, `ConsoleFeedbackSink`, etc.)
+  - **`mcp`**: MCP (Model Context Protocol) tool bridge — namespace-based tool conversion and filtering
+  - **`computer_use`**: Computer Use abstraction — safety policies, domain allowlists, action validation
+  - **`multimodal`**: Extended multimodal support — vision, audio, video modality validation and format checks
+  - **`reasoning`**: Extended reasoning / chain-of-thought support
 - **Infrastructure features**:
   - **`routing_mvp`**: pure logic model management helpers (`CustomModelManager`, `ModelArray`, etc.)
   - **`interceptors`**: application-layer call hooks (`InterceptorPipeline`, `Interceptor`, `RequestContext`)
@@ -101,13 +105,13 @@ Enable with:
 ```toml
 [dependencies]
 # Lean core (default)
-ai-lib-rust = "0.6.6"
+ai-lib-rust = "0.8.0"
 
 # With specific capabilities
-ai-lib-rust = { version = "0.6.6", features = ["embeddings", "telemetry"] }
+ai-lib-rust = { version = "0.8.0", features = ["embeddings", "telemetry"] }
 
 # Everything enabled
-ai-lib-rust = { version = "0.6.6", features = ["full"] }
+ai-lib-rust = { version = "0.8.0", features = ["full"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -269,7 +273,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.6"
+ai-lib-rust = "0.8.0"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```

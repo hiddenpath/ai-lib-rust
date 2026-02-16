@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -101,12 +101,22 @@ guardrails = []
 tokens = []
 telemetry = []
 
+# V2 new capability features
+mcp = []                    # MCP client (stdio + HTTP transport)
+computer_use = []           # Computer Use abstraction
+multimodal = []             # Extended multimodal (audio/video/omni)
+reasoning = []              # Extended thinking / chain-of-thought
+
 # Infrastructure features
 routing_mvp = []
 interceptors = []
 
 # Meta-features for convenience
-full = ["embeddings", "batch", "guardrails", "tokens", "telemetry", "routing_mvp", "interceptors"]
+full = [
+    "embeddings", "batch", "guardrails", "tokens", "telemetry",
+    "routing_mvp", "interceptors",
+    "mcp", "computer_use", "multimodal", "reasoning",
+]
 
 [[example]]
 name = "basic_usage"
@@ -146,3 +156,7 @@ required-features = ["embeddings"]
 [[bin]]
 name = "validate_protocols"
 path = "src/bin/validate_protocols.rs"
+
+[[bin]]
+name = "ai-protocol-cli"
+path = "src/bin/ai_protocol_cli.rs"

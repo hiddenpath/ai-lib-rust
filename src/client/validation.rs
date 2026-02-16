@@ -6,7 +6,7 @@ use crate::protocol::ProtocolManifest;
 use crate::{Error, ErrorContext, Result};
 
 /// Runtime-supported protocol versions
-const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["1.1", "1.5"];
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["1.1", "1.5", "2.0"];
 
 /// Validate protocol version compatibility between runtime and manifest.
 ///
