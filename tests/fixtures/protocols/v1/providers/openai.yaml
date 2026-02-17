@@ -1,0 +1,16 @@
+id: openai
+protocol_version: "2.0"
+name: OpenAI
+endpoint:
+  base_url: "https://api.openai.com/v1"
+  chat: "/chat/completions"
+  auth:
+    type: bearer
+    header: Authorization
+    prefix: Bearer
+error_classification:
+  by_http_status:
+    "400": "invalid_request"
+    "401": "authentication"
+    "429": "rate_limited"
+    "500": "server_error"

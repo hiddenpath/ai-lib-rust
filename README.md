@@ -73,6 +73,20 @@ COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test --test compliance
 
 For details, see [CROSS_RUNTIME.md](https://github.com/hiddenpath/ai-protocol/blob/main/docs/CROSS_RUNTIME.md).
 
+### Testing with ai-protocol-mock
+
+For integration and MCP tests without real API calls, use [ai-protocol-mock](https://github.com/hiddenpath/ai-protocol-mock):
+
+```bash
+# Start mock server (from ai-protocol-mock repo)
+docker-compose up -d
+
+# Run tests with mock
+MOCK_HTTP_URL=http://localhost:4010 MOCK_MCP_URL=http://localhost:4010/mcp cargo test -- --ignored --nocapture
+```
+
+Or in code: `AiClientBuilder::new().base_url_override("http://localhost:4010").build(...)`
+
 ## 🧩 Feature flags & re-exports
 
 `ai-lib-rust` keeps the runtime core small, and exposes optional capabilities behind feature flags. This aligns with the V2 "lean core, progressive complexity" design principle.

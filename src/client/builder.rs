@@ -147,10 +147,15 @@ impl AiClientBuilder {
             || std::env::var("AI_LIB_STRICT_STREAMING").ok().as_deref() == Some("1");
         crate::client::validation::validate_manifest(&manifest, strict_streaming)?;
 
+        // Use MOCK_HTTP_URL env var when base_url_override not set (for testing with ai-protocol-mock)
+        let base_url_override = self
+            .base_url_override
+            .or_else(|| std::env::var("MOCK_HTTP_URL").ok());
+
         let transport = Arc::new(crate::transport::HttpTransport::new_with_base_url(
             &manifest,
             &model_id,
-            self.base_url_override.as_deref(),
+            base_url_override.as_deref(),
         )?);
         let pipeline = Arc::new(crate::pipeline::Pipeline::from_manifest(&manifest)?);
 

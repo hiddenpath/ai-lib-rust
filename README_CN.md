@@ -73,6 +73,20 @@ COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test --test compliance
 
 详细信息请参阅 [CROSS_RUNTIME.md](https://github.com/hiddenpath/ai-protocol/blob/main/docs/CROSS_RUNTIME.md)。
 
+### 使用 ai-protocol-mock 进行测试
+
+在无需真实 API 调用的集成和 MCP 测试中，可使用 [ai-protocol-mock](https://github.com/hiddenpath/ai-protocol-mock)：
+
+```bash
+# 启动 mock 服务（在 ai-protocol-mock 仓库中）
+docker-compose up -d
+
+# 使用 mock 运行测试
+MOCK_HTTP_URL=http://localhost:4010 MOCK_MCP_URL=http://localhost:4010/mcp cargo test -- --ignored --nocapture
+```
+
+或在代码中：`AiClientBuilder::new().base_url_override("http://localhost:4010").build(...)`
+
 ## 🧩 Feature 与 re-export（对外便利入口）
 
 `ai-lib-rust` 的 runtime 核心保持精简；一些“更上层、更偏应用”的工具通过 feature opt-in 暴露，并在 crate root 做 re-export 以提升易用性。

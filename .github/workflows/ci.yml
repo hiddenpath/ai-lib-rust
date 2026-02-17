@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Run tests
+        run: cargo test
+
+  # Enable when ai-protocol-mock repo exists: if: github.repository != 'hiddenpath/ai-protocol-mock'
+  test-with-mock:
+    name: Test with ai-protocol-mock
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Don't block CI if ai-protocol-mock repo not yet created
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout ai-protocol-mock
+        uses: actions/checkout@v4
+        with:
+          repository: hiddenpath/ai-protocol-mock
+          path: ai-protocol-mock
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Start mock server
+        run: |
+          cd ai-protocol-mock
+          pip install -e .
+          python scripts/sync_manifests.py --force || true
+          uvicorn ai_protocol_mock.main:app --host 0.0.0.0 --port 4010 &
+          sleep 3
+
+      - name: Run tests with mock
+        env:
+          MOCK_HTTP_URL: http://localhost:4010
+          MOCK_MCP_URL: http://localhost:4010/mcp
+        run: cargo test -- --ignored --nocapture

@@ -38,7 +38,7 @@ dependencies = [
 
 [[package]]
 name = "ai-lib-rust"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "arc-swap",
