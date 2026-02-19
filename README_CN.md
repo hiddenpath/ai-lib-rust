@@ -35,7 +35,7 @@
 
 ## 🔄 V2 协议对齐
 
-从 v0.6.6 开始，`ai-lib-rust` 与 **AI-Protocol V2** 规范对齐：
+从 v0.7.0 开始，`ai-lib-rust` 与 **AI-Protocol V2** 规范对齐。V0.8.0 新增完整 V2 运行时支持，包括 V2 manifest 解析、Provider 驱动、MCP、Computer Use 及扩展多模态。
 
 ### 标准错误码（V2）
 
@@ -97,15 +97,34 @@ MOCK_HTTP_URL=http://localhost:4010 MOCK_MCP_URL=http://localhost:4010/mcp cargo
   - `AiClient`, `AiClientBuilder`, `CancelHandle`, `CallStats`, `ChatBatchRequest`, `EndpointExt`
   - `Message`, `MessageRole`, `StreamingEvent`, `ToolCall`
   - `Result<T>`, `Error`, `ErrorContext`
-- **feature-gated re-export**：
-  - **`routing_mvp`**：纯逻辑的模型管理/路由工具（`CustomModelManager`, `ModelArray` 等）
+  - `FeedbackEvent`, `FeedbackSink`（核心反馈类型）
+- **Capability features（V2 对齐）**：
+  - **`embeddings`**：嵌入向量生成（`EmbeddingClient`）
+  - **`batch`**：批量 API 处理（`BatchExecutor`）
+  - **`guardrails`**：输入/输出校验
+  - **`tokens`**：Token 计数与成本估算
+  - **`telemetry`**：可观测性 Sink（`InMemoryFeedbackSink`, `ConsoleFeedbackSink` 等）
+  - **`mcp`**：MCP（Model Context Protocol）工具桥接 — 基于命名空间的工具转换与过滤
+  - **`computer_use`**：Computer Use 抽象 — 安全策略、域名白名单、动作校验
+  - **`multimodal`**：扩展多模态 — 视觉、音频、视频模态校验与格式检查
+  - **`reasoning`**：扩展推理 / 思维链支持
+- **Infrastructure features**：
+  - **`routing_mvp`**：纯逻辑模型管理工具（`CustomModelManager`, `ModelArray` 等）
   - **`interceptors`**：应用层调用钩子（`InterceptorPipeline`, `Interceptor`, `RequestContext`）
+- **Meta-feature**：
+  - **`full`**：启用所有 capability 与 infrastructure features
 
 启用方式：
 
 ```toml
 [dependencies]
-ai-lib-rust = { version = "0.6.6", features = ["routing_mvp", "interceptors"] }
+ai-lib-rust = "0.8.4"
+
+# 启用特定能力
+ai-lib-rust = { version = "0.8.4", features = ["embeddings", "telemetry"] }
+
+# 全部启用
+ai-lib-rust = { version = "0.8.4", features = ["full"] }
 ```
 
 ## 🗺️ 能力结构清单（按层次划分）
@@ -299,7 +318,7 @@ let manifest = loader.load_provider("openai").await?;
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.6.6"
+ai-lib-rust = "0.8.4"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
@@ -491,7 +510,8 @@ let results = client.chat_batch_smart(reqs).await;
 1. 所有协议配置遵循 AI-Protocol 规范（v1.5 / V2）
 2. 新算子有适当文档
 3. 新功能包含测试
-4. 代码遵循 Rust 最佳实践并通过 `cargo clippy`
+4. 兼容性测试通过（`cargo test --test compliance`）
+5. 代码遵循 Rust 最佳实践并通过 `cargo clippy`
 
 ## 📄 许可证
 
