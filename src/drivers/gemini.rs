@@ -49,11 +49,24 @@ impl GeminiDriver {
                         system_parts.push(s.clone());
                     }
                 }
+                MessageRole::Tool => {
+                    // Gemini: function_response requires name (from original call) and response.
+                    // We use tool_call_id as name hint; response is the content.
+                    if let (Some(ref id), MessageContent::Text(ref s)) =
+                        (&m.tool_call_id, &m.content)
+                    {
+                        contents.push(serde_json::json!({
+                            "role": "user",
+                            "parts": [{ "functionResponse": { "name": id, "response": { "result": s } } }],
+                        }));
+                    }
+                }
                 _ => {
                     let role = match m.role {
                         MessageRole::User => "user",
                         MessageRole::Assistant => "model",
                         MessageRole::System => unreachable!(),
+                        MessageRole::Tool => unreachable!(),
                     };
                     let parts = Self::content_to_parts(&m.content);
                     contents.push(serde_json::json!({

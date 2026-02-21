@@ -50,11 +50,23 @@ impl AnthropicDriver {
                         system_parts.push(s.clone());
                     }
                 }
+                MessageRole::Tool => {
+                    // Anthropic: tool results are sent as user message with tool_result block
+                    if let (Some(ref id), MessageContent::Text(ref s)) =
+                        (&m.tool_call_id, &m.content)
+                    {
+                        user_messages.push(serde_json::json!({
+                            "role": "user",
+                            "content": [{ "type": "tool_result", "tool_use_id": id, "content": s }],
+                        }));
+                    }
+                }
                 _ => {
                     let role = match m.role {
                         MessageRole::User => "user",
                         MessageRole::Assistant => "assistant",
                         MessageRole::System => unreachable!(),
+                        MessageRole::Tool => unreachable!(),
                     };
                     let content = match &m.content {
                         MessageContent::Text(s) => {

@@ -9,6 +9,9 @@ use std::path::Path;
 pub struct Message {
     pub role: MessageRole,
     pub content: MessageContent,
+    /// Required when role is Tool (OpenAI API: tool_call_id).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl Message {
@@ -16,6 +19,7 @@ impl Message {
         Self {
             role: MessageRole::System,
             content: MessageContent::Text(text.into()),
+            tool_call_id: None,
         }
     }
 
@@ -23,6 +27,7 @@ impl Message {
         Self {
             role: MessageRole::User,
             content: MessageContent::Text(text.into()),
+            tool_call_id: None,
         }
     }
 
@@ -30,11 +35,27 @@ impl Message {
         Self {
             role: MessageRole::Assistant,
             content: MessageContent::Text(text.into()),
+            tool_call_id: None,
+        }
+    }
+
+    /// Create a tool result message for multi-turn tool calling.
+    ///
+    /// OpenAI and similar APIs expect `role: "tool"` with `tool_call_id` and `content`.
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: MessageRole::Tool,
+            content: MessageContent::Text(content.into()),
+            tool_call_id: Some(tool_call_id.into()),
         }
     }
 
     pub fn with_content(role: MessageRole, content: MessageContent) -> Self {
-        Self { role, content }
+        Self {
+            role,
+            content,
+            tool_call_id: None,
+        }
     }
 
     pub fn contains_image(&self) -> bool {
@@ -63,6 +84,8 @@ pub enum MessageRole {
     System,
     User,
     Assistant,
+    /// Tool result message (OpenAI API: role "tool").
+    Tool,
 }
 
 /// Message content (can be string or array of content blocks)
@@ -184,4 +207,30 @@ fn guess_media_type(path: &Path) -> Option<String> {
         _ => return None,
     };
     Some(mt.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_tool() {
+        let msg = Message::tool("call_abc123", "42");
+        assert!(matches!(msg.role, MessageRole::Tool));
+        assert_eq!(msg.tool_call_id.as_deref(), Some("call_abc123"));
+        if let MessageContent::Text(s) = msg.content {
+            assert_eq!(s, "42");
+        } else {
+            panic!("expected Text content");
+        }
+    }
+
+    #[test]
+    fn test_message_role_serialization() {
+        let msg = Message::tool("call_xyz", "result");
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["role"], "tool");
+        assert_eq!(json["content"], "result");
+        assert_eq!(json["tool_call_id"], "call_xyz");
+    }
 }
