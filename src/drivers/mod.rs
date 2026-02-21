@@ -146,7 +146,14 @@ impl ProviderDriver for OpenAiDriver {
                         serde_json::to_value(&m.content).unwrap_or(Value::Null)
                     }
                 };
-                serde_json::json!({ "role": role, "content": content })
+                let mut obj = serde_json::json!({ "role": role, "content": content });
+                // OpenAI API requires tool_call_id for role "tool"
+                if matches!(m.role, crate::types::message::MessageRole::Tool) {
+                    if let Some(ref id) = m.tool_call_id {
+                        obj["tool_call_id"] = Value::String(id.clone());
+                    }
+                }
+                obj
             })
             .collect();
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- **`MessageRole::Tool`**: New variant for tool result messages in multi-turn tool calling
+- **`Message::tool(tool_call_id, content)`**: Constructor for tool result messages (OpenAI API: role "tool")
+- **`Message.tool_call_id`**: Optional field, required when role is Tool for OpenAI serialization
+- **Driver support**: OpenAI, Anthropic, and Gemini drivers now serialize `MessageRole::Tool` to provider-native format
+
+### Changed
+
+- `Message` struct: added `tool_call_id: Option<String>` with `#[serde(default)]` for backward compatibility
+
 ## 0.8.5 - 2026-02-20
 
 ### Added (ZeroClaw upstream response)
