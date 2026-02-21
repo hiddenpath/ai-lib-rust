@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.8.5 - 2026-02-20
+
+### Added (ZeroClaw upstream response)
+
+- **`ChatRequestBuilder::model()`**: Override model per request for single-client multi-model usage
+- **`ChatRequestBuilder::tools_json()`**: Set tools from raw `Vec<serde_json::Value>` for JSON Schema integration
+- **`Error::is_retryable()`**, **`Error::retry_after()`**, **`Error::error_code()`**: Convenience methods for error handling
+- **`AiClient::metrics()`**: Returns `ClientMetrics` snapshot (total_requests, successful_requests, total_tokens)
+- **`ClientMetrics`**: New type for cumulative client metrics
+
+### Changed
+
+- **Documentation**: `execute_stream_with_cancel` and `CancelHandle` Rustdoc with examples
+- **Documentation**: `Arc<AiClient>` sharing pattern in README and `AiClientBuilder` (replaces Clone for ToS compliance)
+- **Fallback behavior**: Model override from `ChatRequestBuilder::model()` preserved for primary client; fallback clients use their own model_id
+
 ## 0.8.0 - 2026-02-16
 
 ### Added

@@ -16,6 +16,8 @@ connectivity_report.txt
 
 # Work documents and internal implementation plans (not for remote)
 work/
+.work/
+target-test/
 
 # Work / internal documents (do not publish)
 *REPORT*.md
@@ -65,3 +67,4 @@ Thumbs.db
 test_*.rs
 !tests/**/*.rs
 !examples/**/*.rs
+

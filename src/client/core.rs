@@ -2,10 +2,11 @@
 //!
 //! Core AI client implementation.
 
-use crate::client::types::CallStats;
+use crate::client::types::{CallStats, ClientMetrics};
 use crate::protocol::ProtocolLoader;
 use crate::protocol::ProtocolManifest;
 use crate::{Error, ErrorContext, Result};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::pipeline::Pipeline;
@@ -29,6 +30,9 @@ pub struct AiClient {
     pub(crate) attempt_timeout: Option<std::time::Duration>,
     pub(crate) breaker: Option<Arc<crate::resilience::circuit_breaker::CircuitBreaker>>,
     pub(crate) rate_limiter: Option<Arc<crate::resilience::rate_limiter::RateLimiter>>,
+    pub(crate) total_requests: AtomicU64,
+    pub(crate) successful_requests: AtomicU64,
+    pub(crate) total_tokens: AtomicU64,
 }
 
 /// Unified response format.
@@ -40,6 +44,39 @@ pub struct UnifiedResponse {
 }
 
 impl AiClient {
+    /// Returns a snapshot of cumulative client metrics.
+    ///
+    /// Useful for monitoring, routing decisions, and observability.
+    pub fn metrics(&self) -> ClientMetrics {
+        ClientMetrics {
+            total_requests: self.total_requests.load(Ordering::Relaxed),
+            successful_requests: self.successful_requests.load(Ordering::Relaxed),
+            total_tokens: self.total_tokens.load(Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn record_success(&self, stats: &CallStats) {
+        self.successful_requests.fetch_add(1, Ordering::Relaxed);
+        if let Some(tokens) = Self::extract_total_tokens(&stats.usage) {
+            self.total_tokens.fetch_add(tokens, Ordering::Relaxed);
+        }
+    }
+
+    pub(crate) fn record_request(&self) {
+        self.total_requests.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn extract_total_tokens(usage: &Option<serde_json::Value>) -> Option<u64> {
+        let u = usage.as_ref()?;
+        u.get("total_tokens")
+            .and_then(|v| v.as_u64())
+            .or_else(|| {
+                u.get("usage")
+                    .and_then(|nested| nested.get("total_tokens"))
+                    .and_then(|v| v.as_u64())
+            })
+    }
+
     /// Snapshot current runtime signals (facts only) for application-layer orchestration.
     pub async fn signals(&self) -> crate::client::signals::SignalsSnapshot {
         let inflight = self.inflight.as_ref().and_then(|sem| {
@@ -110,6 +147,9 @@ impl AiClient {
             attempt_timeout: self.attempt_timeout,
             breaker: self.breaker.clone(),
             rate_limiter: self.rate_limiter.clone(),
+            total_requests: AtomicU64::new(0),
+            successful_requests: AtomicU64::new(0),
+            total_tokens: AtomicU64::new(0),
         })
     }
 
@@ -240,6 +280,8 @@ impl AiClient {
         &self,
         request: crate::protocol::UnifiedRequest,
     ) -> Result<(UnifiedResponse, CallStats)> {
+        self.record_request();
+
         // v0.5.0: The resilience logic is now delegated to the "Resilience Layer" (Pipeline Operators).
         // This core loop is now significantly simpler: it just tries the primary client.
         // If advanced resilience (multi-candidate fallback, complex retries) is needed,
@@ -292,13 +334,18 @@ impl AiClient {
             }
 
             let mut req = request.clone();
-            req.model = client.model_id.clone();
+            if candidate_idx > 0 {
+                req.model = client.model_id.clone();
+            }
 
             // 3. Execution with Retry Policy
             // The `execute_with_retry` helper now encapsulates the retry loop,
             // paving the way for `RetryOperator` migration.
             match client.execute_with_retry(&req, &policy, has_fallback).await {
-                Ok(res) => return Ok(res),
+                Ok((resp, stats)) => {
+                    client.record_success(&stats);
+                    return Ok((resp, stats));
+                }
                 Err(e) => {
                     // If we are here, retries were exhausted or policy said Fallback/Fail.
                     last_err = Some(e);

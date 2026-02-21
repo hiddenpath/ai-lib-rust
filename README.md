@@ -83,6 +83,9 @@ docker-compose up -d
 
 # Run tests with mock
 MOCK_HTTP_URL=http://localhost:4010 MOCK_MCP_URL=http://localhost:4010/mcp cargo test -- --ignored --nocapture
+
+# Run specific mock integration tests
+MOCK_HTTP_URL=http://localhost:4010 cargo test test_sse_streaming_via_mock test_error_classification_via_mock -- --ignored --nocapture
 ```
 
 Or in code: `AiClientBuilder::new().base_url_override("http://localhost:4010").build(...)`
@@ -94,7 +97,7 @@ Or in code: `AiClientBuilder::new().base_url_override("http://localhost:4010").b
 For a deeper overview, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 - **Always available re-exports (crate root)**:
-  - `AiClient`, `AiClientBuilder`, `CancelHandle`, `CallStats`, `ChatBatchRequest`, `EndpointExt`
+  - `AiClient`, `AiClientBuilder`, `CancelHandle`, `CallStats`, `ChatBatchRequest`, `ClientMetrics`, `EndpointExt`
   - `Message`, `MessageRole`, `StreamingEvent`, `ToolCall`
   - `Result<T>`, `Error`, `ErrorContext`
   - `FeedbackEvent`, `FeedbackSink` (core feedback types)
@@ -206,6 +209,28 @@ This is a structured view of what the crate provides, grouped by layers.
 - **`interceptors`** (`src/interceptors/`): hooks around calls for logging/metrics/audit
 
 ## 🚀 Quick Start
+
+### Sharing the client across tasks
+
+`AiClient` does not implement `Clone` (by design, for API key and provider ToS compliance).
+Use `Arc<AiClient>` to share across async tasks:
+
+```rust
+use ai_lib_rust::{AiClient, Message};
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> ai_lib_rust::Result<()> {
+    let client = Arc::new(AiClient::new("openai/gpt-4o").await?);
+    // Pass Arc::clone(&client) to spawned tasks
+    let handle = tokio::spawn({
+        let c = Arc::clone(&client);
+        async move { c.chat().messages(vec![Message::user("Hi")]).execute().await }
+    });
+    let _ = handle.await?;
+    Ok(())
+}
+```
 
 ### Basic Usage
 

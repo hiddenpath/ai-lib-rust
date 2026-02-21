@@ -1,7 +1,37 @@
 //! Integration tests for error handling, retry, and fallback
+//!
+//! Uses ai-protocol-mock with X-Mock-Status when MOCK_HTTP_URL is set.
+//! Run with: MOCK_HTTP_URL=http://localhost:4010 cargo test integration::error_handling -- --ignored --nocapture
 
 use ai_lib_rust::prelude::*;
 use crate::integration::mock_server::MockServerFixture;
+use reqwest::Client;
+
+#[tokio::test]
+#[ignore = "requires ai-protocol-mock; run with MOCK_HTTP_URL set"]
+async fn test_error_classification_via_mock() {
+    let mock_url = std::env::var("MOCK_HTTP_URL").ok();
+    if mock_url.is_none() {
+        eprintln!("MOCK_HTTP_URL not set, skipping");
+        return;
+    }
+    let base = mock_url.as_ref().unwrap();
+    let client = Client::new();
+
+    for status in [429u16, 500, 503] {
+        let r = client
+            .post(format!("{}/v1/chat/completions", base))
+            .header("X-Mock-Status", status.to_string())
+            .json(&serde_json::json!({
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "Hi"}]
+            }))
+            .send()
+            .await
+            .expect("request");
+        assert_eq!(r.status(), status, "X-Mock-Status={} should return {}", status, status);
+    }
+}
 
 #[tokio::test]
 async fn test_retry_on_transient_error() {

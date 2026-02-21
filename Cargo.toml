@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.8.1"
+version = "0.8.5"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -36,7 +36,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 
 # HTTP client
-reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls", "blocking"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls", "blocking", "multipart"] }
 
 # JSON manipulation
 tokio-util = { version = "0.7", features = ["codec"] }
@@ -106,6 +106,9 @@ mcp = []                    # MCP client (stdio + HTTP transport)
 computer_use = []           # Computer Use abstraction
 multimodal = []             # Extended multimodal (audio/video/omni)
 reasoning = []              # Extended thinking / chain-of-thought
+stt = []                    # Speech-to-Text (e.g. OpenAI Whisper)
+tts = []                    # Text-to-Speech (e.g. OpenAI TTS)
+reranking = []              # Document reranking (e.g. Cohere Rerank)
 
 # Infrastructure features
 routing_mvp = []
@@ -116,6 +119,7 @@ full = [
     "embeddings", "batch", "guardrails", "tokens", "telemetry",
     "routing_mvp", "interceptors",
     "mcp", "computer_use", "multimodal", "reasoning",
+    "stt", "tts", "reranking",
 ]
 
 [[example]]
@@ -152,6 +156,11 @@ required-features = ["batch"]
 name = "embeddings_similarity"
 path = "examples/embeddings_similarity.rs"
 required-features = ["embeddings"]
+
+[[example]]
+name = "multi_provider"
+path = "examples/multi_provider.rs"
+required-features = ["routing_mvp"]
 
 [[bin]]
 name = "validate_protocols"

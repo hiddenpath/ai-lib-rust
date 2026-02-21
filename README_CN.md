@@ -83,6 +83,9 @@ docker-compose up -d
 
 # 使用 mock 运行测试
 MOCK_HTTP_URL=http://localhost:4010 MOCK_MCP_URL=http://localhost:4010/mcp cargo test -- --ignored --nocapture
+
+# 运行指定 mock 集成测试
+MOCK_HTTP_URL=http://localhost:4010 cargo test test_sse_streaming_via_mock test_error_classification_via_mock -- --ignored --nocapture
 ```
 
 或在代码中：`AiClientBuilder::new().base_url_override("http://localhost:4010").build(...)`

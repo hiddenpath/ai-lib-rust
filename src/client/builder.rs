@@ -2,12 +2,28 @@ use crate::client::core::AiClient;
 use crate::feedback::FeedbackSink;
 use crate::protocol::ProtocolLoader;
 use crate::Result;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 /// Builder for creating clients with custom configuration.
 ///
 /// Keep this surface area small and predictable (developer-friendly).
+///
+/// ## Sharing across tasks
+///
+/// `AiClient` does not implement `Clone` (by design, for API key and ToS compliance).
+/// To share a client across multiple async tasks, wrap it in `Arc`:
+///
+/// ```ignore
+/// let client = Arc::new(
+///     AiClientBuilder::new()
+///         .build("openai/gpt-4o")
+///         .await?
+/// );
+/// // Use Arc::clone(&client) to pass to tasks
+/// tokio::spawn(use_client(Arc::clone(&client)));
+/// ```
 pub struct AiClientBuilder {
     protocol_path: Option<String>,
     hot_reload: bool,
@@ -209,6 +225,9 @@ impl AiClientBuilder {
             attempt_timeout,
             breaker: self.breaker,
             rate_limiter,
+            total_requests: AtomicU64::new(0),
+            successful_requests: AtomicU64::new(0),
+            total_tokens: AtomicU64::new(0),
         })
     }
 }

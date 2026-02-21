@@ -7,6 +7,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::{oneshot, OwnedSemaphorePermit};
 
+/// Snapshot of cumulative client metrics for monitoring and routing.
+#[derive(Debug, Clone, Default)]
+pub struct ClientMetrics {
+    pub total_requests: u64,
+    pub successful_requests: u64,
+    pub total_tokens: u64,
+}
+
 /// Per-call statistics for observability and model selection.
 #[derive(Debug, Clone, Default)]
 pub struct CallStats {
@@ -30,7 +38,26 @@ pub struct CallStats {
     pub signals: SignalsSnapshot,
 }
 
-/// Streaming response cancel handle.
+/// Handle to cancel an in-flight streaming request.
+///
+/// Call [`cancel`](Self::cancel) to signal the stream to stop. The stream will emit
+/// a final `StreamEnd { finish_reason: Some("cancelled") }` and then terminate.
+///
+/// # Example
+///
+/// ```ignore
+/// let (stream, cancel_handle) = client.chat()
+///     .messages(msgs)
+///     .stream()
+///     .execute_stream_with_cancel()
+///     .await?;
+///
+/// // Cancel from another task or on user action
+/// tokio::spawn(async move {
+///     tokio::time::sleep(Duration::from_secs(5)).await;
+///     cancel_handle.cancel();
+/// });
+/// ```
 pub struct CancelHandle {
     sender: Option<oneshot::Sender<()>>,
 }

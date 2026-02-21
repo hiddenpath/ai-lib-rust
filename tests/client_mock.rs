@@ -3,7 +3,7 @@
 //! Requires ai-protocol-mock server running. Set MOCK_HTTP_URL=http://localhost:4010
 //! and run with: cargo test client_mock -- --ignored --nocapture
 
-use ai_lib_rust::{AiClient, AiClientBuilder, Message};
+use ai_lib_rust::{AiClientBuilder, Message};
 
 #[tokio::test]
 #[ignore = "requires ai-protocol-mock server; run with: cargo test client_mock -- --ignored --nocapture"]

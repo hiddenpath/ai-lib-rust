@@ -43,6 +43,7 @@
 use crate::error_code::StandardErrorCode;
 use crate::pipeline::PipelineError;
 use crate::protocol::ProtocolError;
+use std::time::Duration;
 use thiserror::Error;
 
 /// Structured error context for better error handling and debugging.
@@ -350,6 +351,55 @@ impl Error {
             } => Some(c),
             _ => None,
         }
+    }
+
+    /// Returns whether this error is retryable.
+    ///
+    /// Checks `Remote.retryable`, `context.retryable`, and `standard_code().retryable()`
+    /// in order of precedence.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Error::Remote { retryable, context, .. } => {
+                if *retryable {
+                    return true;
+                }
+                if let Some(ref ctx) = context {
+                    if let Some(r) = ctx.retryable {
+                        return r;
+                    }
+                }
+                self.standard_code().map(|c| c.retryable()).unwrap_or(false)
+            }
+            Error::Configuration { context, .. }
+            | Error::Validation { context, .. }
+            | Error::Runtime { context, .. }
+            | Error::Unknown { context, .. } => context
+                .retryable
+                .or_else(|| context.standard_code.map(|c| c.retryable()))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    /// Returns the suggested retry delay when available.
+    ///
+    /// For `Remote` errors, converts `retry_after_ms` to `Duration`.
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Error::Remote {
+                retry_after_ms: Some(ms),
+                ..
+            } => Some(Duration::from_millis(*ms as u64)),
+            _ => None,
+        }
+    }
+
+    /// Returns the AI-Protocol V2 standard error code when available.
+    ///
+    /// Alias for [`standard_code`](Self::standard_code) for convenience.
+    #[inline]
+    pub fn error_code(&self) -> Option<StandardErrorCode> {
+        self.standard_code()
     }
 
     /// Returns the AI-Protocol V2 standard error code when available.

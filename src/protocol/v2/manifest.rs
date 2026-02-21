@@ -48,6 +48,12 @@ pub struct EndpointV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embeddings: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tts: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rerank: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthConfigV2>,
 }
 

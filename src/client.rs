@@ -22,5 +22,5 @@ pub use chat::{ChatBatchRequest, ChatRequestBuilder};
 pub use core::{AiClient, UnifiedResponse};
 pub use endpoint::EndpointExt;
 pub use signals::SignalsSnapshot;
-pub use types::{CallStats, CancelHandle};
+pub use types::{CallStats, CancelHandle, ClientMetrics};
 pub use error_classification::classify_error_from_response;

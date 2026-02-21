@@ -57,6 +57,8 @@ pub struct ChatRequestBuilder<'a> {
     pub(crate) stream: bool,
     pub(crate) tools: Option<Vec<crate::types::tool::ToolDefinition>>,
     pub(crate) tool_choice: Option<serde_json::Value>,
+    /// Optional model override; when set, overrides the client's default model for this request.
+    pub(crate) model: Option<String>,
 }
 
 impl<'a> ChatRequestBuilder<'a> {
@@ -69,6 +71,7 @@ impl<'a> ChatRequestBuilder<'a> {
             stream: false,
             tools: None,
             tool_choice: None,
+            model: None,
         }
     }
 
@@ -108,6 +111,38 @@ impl<'a> ChatRequestBuilder<'a> {
         self
     }
 
+    /// Set tools from raw JSON values (e.g., from existing JSON Schema tool definitions).
+    ///
+    /// Convenience method for integrating with tool systems that produce `serde_json::Value`.
+    /// Values that fail to deserialize into `ToolDefinition` are skipped.
+    pub fn tools_json(self, tools: Vec<serde_json::Value>) -> Self {
+        let defs: Vec<crate::types::tool::ToolDefinition> = tools
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        self.tools(defs)
+    }
+
+    /// Override the model for this request.
+    ///
+    /// When set, this overrides the client's default model. Useful for single-client
+    /// multi-model usage (e.g., same API key with different models).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let client = AiClient::new("openai/gpt-4o").await?;
+    /// let resp = client.chat()
+    ///     .messages(msgs)
+    ///     .model("gpt-4o-mini")  // Use different model for this request
+    ///     .execute()
+    ///     .await?;
+    /// ```
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
     /// Execute the request and return a stream of events.
     pub async fn execute_stream(
         self,
@@ -130,6 +165,8 @@ impl<'a> ChatRequestBuilder<'a> {
     )> {
         // Validate request against protocol capabilities
         self.client.validate_request(&self)?;
+
+        self.client.record_request();
 
         let base_client = self.client;
         let unified_req = self.into_unified_request();
@@ -169,7 +206,9 @@ impl<'a> ChatRequestBuilder<'a> {
                 }
 
                 let mut req = unified_req.clone();
-                req.model = client.model_id.clone();
+                if candidate_idx > 0 {
+                    req.model = client.model_id.clone();
+                }
 
                 match client.execute_stream_once(&req).await {
                     Ok((mut event_stream, permit, mut stats)) => {
@@ -193,6 +232,7 @@ impl<'a> ChatRequestBuilder<'a> {
                             None => {
                                 stats.retry_count = retry_count;
                                 stats.emitted_any = false;
+                                base_client.record_success(&stats);
                                 let wrapped = ControlledStream::new(
                                     Box::pin(futures::stream::empty()),
                                     Some(cancel_rx),
@@ -218,6 +258,7 @@ impl<'a> ChatRequestBuilder<'a> {
                                 stats.first_event_ms = Some(first_ms);
                                 stats.emitted_any = true;
 
+                                base_client.record_success(&stats);
                                 return Ok((Box::pin(wrapped), cancel_handle, stats));
                             }
                             Some(Err(e)) => {
@@ -271,6 +312,29 @@ impl<'a> ChatRequestBuilder<'a> {
     }
 
     /// Execute the request and return a cancellable stream of events.
+    ///
+    /// Returns a stream and a [`CancelHandle`]. Call `cancel_handle.cancel()` to stop
+    /// the stream early (e.g., when the user abandons the request).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (mut stream, cancel_handle) = client.chat()
+    ///     .messages(msgs)
+    ///     .stream()
+    ///     .execute_stream_with_cancel()
+    ///     .await?;
+    ///
+    /// // In another task or on user cancel:
+    /// cancel_handle.cancel();
+    ///
+    /// while let Some(event) = stream.next().await {
+    ///     match event? {
+    ///         StreamingEvent::StreamEnd { .. } => break,
+    ///         ev => process(ev),
+    ///     }
+    /// }
+    /// ```
     pub async fn execute_stream_with_cancel(
         self,
     ) -> Result<(
@@ -304,6 +368,7 @@ impl<'a> ChatRequestBuilder<'a> {
                 stream: true,
                 tools: unified_req.tools.clone(),
                 tool_choice: unified_req.tool_choice.clone(),
+                model: Some(unified_req.model.clone()),
             };
             builder.execute_stream().await?
         };
@@ -369,9 +434,12 @@ impl<'a> ChatRequestBuilder<'a> {
     }
 
     fn into_unified_request(self) -> crate::protocol::UnifiedRequest {
+        let model = self
+            .model
+            .unwrap_or_else(|| self.client.model_id.clone());
         crate::protocol::UnifiedRequest {
             operation: "chat".to_string(),
-            model: self.client.model_id.clone(),
+            model,
             messages: self.messages,
             temperature: self.temperature,
             max_tokens: self.max_tokens,

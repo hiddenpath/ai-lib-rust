@@ -26,6 +26,9 @@ pub enum Capability {
     ComputerUse,
     McpClient,
     McpServer,
+    Stt,
+    Tts,
+    Rerank,
 }
 
 impl Capability {
@@ -43,6 +46,9 @@ impl Capability {
             Self::ImageGeneration => Some("image_gen"),
             Self::ComputerUse => Some("computer_use"),
             Self::McpClient | Self::McpServer => Some("mcp"),
+            Self::Stt => Some("stt"),
+            Self::Tts => Some("tts"),
+            Self::Rerank => Some("reranking"),
         }
     }
 
@@ -70,6 +76,9 @@ impl Capability {
             Self::ComputerUse => "computer_use",
             Self::McpClient => "mcp.client",
             Self::McpServer => "mcp.server",
+            Self::Stt => "stt",
+            Self::Tts => "tts",
+            Self::Rerank => "rerank",
         }
     }
 }

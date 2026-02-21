@@ -102,6 +102,12 @@ pub mod multimodal;
 pub mod tokens;
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
+#[cfg(feature = "stt")]
+pub mod stt;
+#[cfg(feature = "tts")]
+pub mod tts;
+#[cfg(feature = "reranking")]
+pub mod rerank;
 
 // Infrastructure modules (feature-gated)
 #[cfg(feature = "routing_mvp")]
@@ -112,6 +118,7 @@ pub mod interceptors;
 // Re-export main types for convenience
 pub use client::CallStats;
 pub use client::CancelHandle;
+pub use client::ClientMetrics;
 pub use client::ChatBatchRequest;
 pub use client::EndpointExt;
 pub use client::{AiClient, AiClientBuilder};
