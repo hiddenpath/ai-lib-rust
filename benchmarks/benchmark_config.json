@@ -1,0 +1,14 @@
+{
+  "targetUrl": "http://127.0.0.1:4010/v1/chat/completions",
+  "durationSeconds": 20,
+  "connections": 20,
+  "pipelining": 1,
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "payload": {
+    "model": "gpt-4o",
+    "messages": [{"role":"user","content":"hello benchmark"}],
+    "max_tokens": 64
+  }
+}

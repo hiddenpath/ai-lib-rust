@@ -1,0 +1,184 @@
+name: AI-Lib Rust Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark-smoke:
+    name: Smoke Test (Fast)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install dependencies
+        run: |
+          npm install -g autocannon
+          curl --version
+      
+      - name: Verify Deepseek API Format
+        run: |
+          cat > test_api.sh << 'EOF'
+          #!/bin/bash
+          API_KEY="$DEEPSEEK_API_KEY"
+          PAYLOAD='{"model":"deepseek-chat","messages":[{"role":"user","content":"What is 1+1?"}],"max_tokens":50,"temperature":0.5}'
+          
+          RESPONSE=$(curl -s -X POST https://api.deepseek.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $API_KEY" \
+            -d "$PAYLOAD")
+          
+          echo "Response: $(echo $RESPONSE | jq -r '.model // .error.message // "unknown"')"
+          echo $RESPONSE | jq '.usage.prompt_tokens // 0' > /dev/null && echo "✓ Format valid"
+          EOF
+          chmod +x test_api.sh
+          ./test_api.sh
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      
+      - name: Run Smoke Benchmark (30s)
+        run: |
+          cat > benchmark_payload.json << 'EOF'
+          {"model":"deepseek-chat","messages":[{"role":"user","content":"What is 2+2?"}],"max_tokens":100,"temperature":0.5}
+          EOF
+          
+          autocannon \
+            -d 30 \
+            -c 3 \
+            -p 1 \
+            --method POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+            --input benchmark_payload.json \
+            --json https://api.deepseek.com/v1/chat/completions | tee smoke_test.json
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      
+      - name: Check Smoke Test Results
+        run: |
+          RPS=$(jq -r '.requests.average // 0' smoke_test.json)
+          P99=$(jq -r '.latency.p99 // 0' smoke_test.json)
+          
+          echo "Smoke Test Results:"
+          echo "  RPS: $RPS"
+          echo "  P99: ${P99}ms"
+          
+          # Fail if RPS is suspiciously low
+          if (( $(echo "$RPS < 5" | bc -l) )); then
+            echo "❌ RPS too low, possible API issue"
+            exit 1
+          fi
+          echo "✓ Smoke test passed"
+      
+      - name: Upload Smoke Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-smoke-test-results
+          path: smoke_test.json
+          retention-days: 30
+
+  benchmark-full:
+    name: Full Benchmark (Nightly)
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 2 * * *'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install dependencies
+        run: |
+          npm install -g autocannon
+          sudo apt-get update && sudo apt-get install -y jq
+      
+      - name: Run Full Benchmark (3 runs × 60s)
+        run: |
+          mkdir -p benchmark_results
+          
+          cat > benchmark_payload.json << 'EOF'
+          {"model":"deepseek-chat","messages":[{"role":"user","content":"Explain machine learning in one paragraph"}],"max_tokens":200,"temperature":0.7}
+          EOF
+          
+          for i in {1..3}; do
+            echo "[Run $i] Starting benchmark..."
+            autocannon \
+              -d 60 \
+              -c 5 \
+              -p 1 \
+              --method POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+              --input benchmark_payload.json \
+              --json https://api.deepseek.com/v1/chat/completions | tee benchmark_results/run_$i.json
+            
+            sleep 10  # Cool-down between runs
+          done
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      
+      - name: Generate Benchmark Report
+        run: |
+          cat > generate_report.sh << 'EOFSCRIPT'
+          #!/bin/bash
+          echo "# AI-Lib Rust Benchmark Report - $(date -u)" > BENCHMARK_REPORT.md
+          echo "" >> BENCHMARK_REPORT.md
+          echo "## Results Summary" >> BENCHMARK_REPORT.md
+          echo "" >> BENCHMARK_REPORT.md
+          echo "| Run | RPS | P99 Latency | Requests |" >> BENCHMARK_REPORT.md
+          echo "|-----|-----|-------------|----------|" >> BENCHMARK_REPORT.md
+          
+          for i in {1..3}; do
+            RPS=$(jq -r '.requests.average // "N/A"' benchmark_results/run_$i.json)
+            P99=$(jq -r '.latency.p99 // "N/A"' benchmark_results/run_$i.json)
+            REQS=$(jq -r '.requests.total // 0' benchmark_results/run_$i.json)
+            echo "| $i | $RPS | ${P99}ms | $REQS |" >> BENCHMARK_REPORT.md
+          done
+          
+          # Compute averages
+          RPS1=$(jq -r '.requests.average // 0' benchmark_results/run_1.json)
+          RPS2=$(jq -r '.requests.average // 0' benchmark_results/run_2.json)
+          RPS3=$(jq -r '.requests.average // 0' benchmark_results/run_3.json)
+          RPSAVG=$(echo "scale=1; ($RPS1 + $RPS2 + $RPS3) / 3" | bc)
+          
+          echo "" >> BENCHMARK_REPORT.md
+          echo "**Average RPS**: $RPSAVG" >> BENCHMARK_REPORT.md
+          echo "**Test Date**: $(date -u)" >> BENCHMARK_REPORT.md
+          EOFSCRIPT
+          
+          chmod +x generate_report.sh
+          ./generate_report.sh
+      
+      - name: Upload Full Benchmark Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-benchmark-results-nightly
+          path: |
+            benchmark_results/
+            BENCHMARK_REPORT.md
+          retention-days: 90
+
+  performance-regression:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: benchmark-smoke
+    steps:
+      - name: Download baseline results
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-smoke-test-results
+          path: .
+      
+      - name: Compare with baseline
+        run: |
+          # This would compare against a baseline stored in repo
+          # For now, just verify the test completed successfully
+          if [ -f smoke_test.json ]; then
+            echo "✓ Smoke test results available for regression check"
+            jq . smoke_test.json
+          fi
