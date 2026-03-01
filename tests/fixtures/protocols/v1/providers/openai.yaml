@@ -37,6 +37,23 @@ parameter_mappings:
   messages: "messages"
   stream: "stream"
 
+response_paths:
+  content: "choices[0].message.content"
+  tool_calls: "choices[0].message.tool_calls"
+  usage: "usage"
+  finish_reason: "choices[0].finish_reason"
+
+streaming:
+  event_format: "data_lines"
+  decoder:
+    format: "sse"
+    delimiter: "\n\n"
+    prefix: "data: "
+    done_signal: "[DONE]"
+  frame_selector: "exists($.choices) || exists($.error)"
+  content_path: "choices[0].delta.content"
+  tool_call_path: "choices[0].delta.tool_calls"
+
 error_classification:
   by_http_status:
     "400": "invalid_request"

@@ -4,16 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.8.6 - 2026-02-28
+
 ### Added
 
 - **`MessageRole::Tool`**: New variant for tool result messages in multi-turn tool calling
 - **`Message::tool(tool_call_id, content)`**: Constructor for tool result messages (OpenAI API: role "tool")
 - **`Message.tool_call_id`**: Optional field, required when role is Tool for OpenAI serialization
 - **Driver support**: OpenAI, Anthropic, and Gemini drivers now serialize `MessageRole::Tool` to provider-native format
+- **Benchmark scaffolding**: Portable `benchmarks/` scripts and config for local/autocannon validation
+- **Operational docs**: Added security/secret-management guidance and helper script for benchmark secrets workflows
 
 ### Changed
 
 - `Message` struct: added `tool_call_id: Option<String>` with `#[serde(default)]` for backward compatibility
+- Runtime validator now accepts V2 manifests in mock/testing paths by skipping strict V1 schema enforcement for protocol `2.x`
+- Mock fixture manifest for OpenAI now includes streaming/response mappings required by current pipeline validation
 
 ## 0.8.5 - 2026-02-20
 

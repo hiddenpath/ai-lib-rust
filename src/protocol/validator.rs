@@ -264,15 +264,19 @@ impl ProtocolValidator {
             .map_err(|e| ProtocolError::ValidationError(format!("Serialization error: {}", e)))?;
 
         // 1. JSON Schema validation
-        if let Err(errors) = self.schema.validate(&manifest_json) {
-            let error_msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
-            return Err(ProtocolError::ValidationError(format!(
-                "JSON Schema validation failed:\n  - {}",
-                error_msgs.join("\n  - ")
-            ))
-            .with_hint(
-                "Check the official AI-Protocol documentation for the required file structure.",
-            ));
+        // The bundled/remote schema here is v1-focused. For v2 manifests, skip strict
+        // v1 schema enforcement and rely on runtime basic checks + v2-specific paths.
+        if manifest.protocol_version.starts_with("1.") {
+            if let Err(errors) = self.schema.validate(&manifest_json) {
+                let error_msgs: Vec<String> = errors.map(|e| e.to_string()).collect();
+                return Err(ProtocolError::ValidationError(format!(
+                    "JSON Schema validation failed:\n  - {}",
+                    error_msgs.join("\n  - ")
+                ))
+                .with_hint(
+                    "Check the official AI-Protocol documentation for the required file structure.",
+                ));
+            }
         }
 
         // 2. Perform basic logic validation
@@ -303,12 +307,13 @@ impl ProtocolValidator {
         }
 
         // Validate protocol version
-        if !manifest.protocol_version.starts_with("1.") {
+        if !(manifest.protocol_version.starts_with("1.") || manifest.protocol_version.starts_with("2."))
+        {
             return Err(ProtocolError::InvalidVersion {
                 version: manifest.protocol_version.clone(),
-                max_supported: "1.x".to_string(),
+                max_supported: "2.x".to_string(),
                 hint: Some(
-                    "This version of the library only supports AI-Protocol v1.x manifests."
+                    "This version of the library supports AI-Protocol v1.x and v2.x manifests."
                         .to_string(),
                 ),
             });
