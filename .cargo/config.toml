@@ -1,6 +1,1 @@
-[build]
-target = "x86_64-pc-windows-gnu"
-
-[target.x86_64-pc-windows-gnu]
-linker = "gcc"
-rustflags = ["-C", "linker=gcc"]
+# Allow default host build

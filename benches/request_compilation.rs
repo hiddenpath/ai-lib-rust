@@ -67,6 +67,7 @@ fn create_simple_request() -> UnifiedRequest {
         messages: vec![Message {
             role: MessageRole::User,
             content: MessageContent::Text("Hello, world!".to_string()),
+            tool_call_id: None,
         }],
         temperature: Some(0.7),
         max_tokens: Some(1000),
@@ -109,10 +110,12 @@ fn create_complex_request() -> UnifiedRequest {
                 content: MessageContent::Text(
                     "You are a helpful assistant that can check the weather.".to_string(),
                 ),
+                tool_call_id: None,
             },
             Message {
                 role: MessageRole::User,
                 content: MessageContent::Text("What is the weather like in Tokyo?".to_string()),
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.7),
@@ -128,16 +131,19 @@ fn create_long_conversation() -> UnifiedRequest {
     let mut messages = vec![Message {
         role: MessageRole::System,
         content: MessageContent::Text("You are a helpful assistant.".to_string()),
+        tool_call_id: None,
     }];
 
     for i in 0..50 {
         messages.push(Message {
             role: MessageRole::User,
             content: MessageContent::Text(format!("User message number {}", i)),
+            tool_call_id: None,
         });
         messages.push(Message {
             role: MessageRole::Assistant,
             content: MessageContent::Text(format!("Assistant response number {}", i)),
+            tool_call_id: None,
         });
     }
 
@@ -166,25 +172,19 @@ fn bench_request_compilation(c: &mut Criterion) {
     group.bench_with_input(
         BenchmarkId::new("compile", "simple"),
         &simple_request,
-        |b, req| {
-            b.iter(|| manifest.compile_request(black_box(req)).unwrap())
-        },
+        |b, req| b.iter(|| manifest.compile_request(black_box(req)).unwrap()),
     );
 
     group.bench_with_input(
         BenchmarkId::new("compile", "with_tools"),
         &complex_request,
-        |b, req| {
-            b.iter(|| manifest.compile_request(black_box(req)).unwrap())
-        },
+        |b, req| b.iter(|| manifest.compile_request(black_box(req)).unwrap()),
     );
 
     group.bench_with_input(
         BenchmarkId::new("compile", "long_conversation"),
         &long_request,
-        |b, req| {
-            b.iter(|| manifest.compile_request(black_box(req)).unwrap())
-        },
+        |b, req| b.iter(|| manifest.compile_request(black_box(req)).unwrap()),
     );
 
     group.finish();
@@ -201,6 +201,7 @@ fn bench_message_serialization(c: &mut Criterion) {
                 MessageRole::Assistant
             },
             content: MessageContent::Text(format!("Message content number {}", i)),
+            tool_call_id: None,
         })
         .collect();
 
