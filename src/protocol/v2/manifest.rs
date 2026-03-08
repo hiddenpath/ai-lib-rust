@@ -44,17 +44,38 @@ pub struct ExtraHeader {
 pub struct EndpointV2 {
     pub base_url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub chat: Option<String>,
+    pub chat: Option<EndpointPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub embeddings: Option<String>,
+    pub embeddings: Option<EndpointPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stt: Option<String>,
+    pub stt: Option<EndpointPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tts: Option<String>,
+    pub tts: Option<EndpointPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rerank: Option<String>,
+    pub rerank: Option<EndpointPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthConfigV2>,
+}
+
+/// Endpoint path can be a plain string or an object carrying a path field.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EndpointPath {
+    Plain(String),
+    Structured {
+        path: String,
+        #[serde(flatten)]
+        extra: HashMap<String, serde_json::Value>,
+    },
+}
+
+impl EndpointPath {
+    pub fn as_path(&self) -> &str {
+        match self {
+            Self::Plain(path) => path,
+            Self::Structured { path, .. } => path,
+        }
+    }
 }
 
 // ─── Ring 2: Capability Mapping (Conditional) ───────────────────────────────
@@ -398,7 +419,11 @@ impl ManifestV2 {
 
     /// Get the chat endpoint path.
     pub fn chat_path(&self) -> &str {
-        self.endpoint.chat.as_deref().unwrap_or("/chat/completions")
+        self.endpoint
+            .chat
+            .as_ref()
+            .map(EndpointPath::as_path)
+            .unwrap_or("/chat/completions")
     }
 
     /// Detect the API style from the manifest structure.

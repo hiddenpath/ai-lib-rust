@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.9.1 - 2026-03-08
+
+### Added
+
+- Compliance execution expanded in `tests/compliance.rs` to cover:
+  - retry decision (`res-*`)
+  - message building (`msg-*`)
+  - stream decoding/event mapping/tool accumulation (`str-*`)
+  - request parameter mapping (`req-*`)
+- Structured endpoint path compatibility test for V2 manifests (`endpoint.chat` as object with `path`).
+
+### Changed
+
+- V2 manifest endpoint path fields now accept both string and structured `{ path: ... }` forms via `EndpointPath`.
+- Compliance suite runs without dead_code warnings in test structures.
+
 ## 0.9.0 - 2026-03-07
 
 ### Added

@@ -72,3 +72,22 @@ fn consume_latest_v2_generative_manifests() {
         assert!(!output_video_supported, "{provider} output.video expected false in current P0 manifests");
     }
 }
+
+#[test]
+fn supports_structured_endpoint_chat_shape() {
+    let raw = r#"
+id: shape-compat
+protocol_version: "2.0"
+endpoint:
+  base_url: "https://example.com"
+  chat:
+    path: "/v2/chat"
+    method: "POST"
+capabilities:
+  required: ["text"]
+  optional: []
+"#;
+    let manifest: ManifestV2 = serde_yaml::from_str(raw).expect("manifest should parse");
+    assert_eq!(manifest.chat_path(), "/v2/chat");
+    assert_eq!(manifest.base_url(), "https://example.com");
+}
