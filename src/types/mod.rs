@@ -42,15 +42,17 @@
 //!
 //! // Define a tool
 //! let tool = ToolDefinition {
-//!     name: "get_weather".to_string(),
-//!     description: Some("Get current weather for a location".to_string()),
-//!     parameters: serde_json::json!({
-//!         "type": "object",
-//!         "properties": {
-//!             "location": {"type": "string"}
-//!         }
-//!     }),
-//!     strict: None,
+//!     tool_type: "function".to_string(),
+//!     function: ai_lib_rust::types::tool::FunctionDefinition {
+//!         name: "get_weather".to_string(),
+//!         description: Some("Get current weather for a location".to_string()),
+//!         parameters: Some(serde_json::json!({
+//!             "type": "object",
+//!             "properties": {
+//!                 "location": {"type": "string"}
+//!             }
+//!         })),
+//!     },
 //! };
 //! ```
 
