@@ -225,6 +225,40 @@ fn manifest_has_required_shape(manifest: &Value) -> bool {
     id_ok && pv_ok && endpoint_ok
 }
 
+fn ios_capability_profile_errors(manifest: &Value) -> Vec<String> {
+    let Some(cp) = manifest.get("capability_profile") else {
+        return Vec::new();
+    };
+    let Some(cp_map) = cp.as_mapping() else {
+        return vec!["capability_profile must be object".to_string()];
+    };
+
+    let phase = cp_map
+        .get(&Value::String("phase".to_string()))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if phase != "ios_v1" {
+        return Vec::new();
+    }
+
+    let mut errors = Vec::new();
+    if cp_map.contains_key(&Value::String("process".to_string()))
+        || cp_map.contains_key(&Value::String("contract".to_string()))
+    {
+        errors.push("must NOT have additional properties".to_string());
+    }
+
+    let has_ios_keys = cp_map.contains_key(&Value::String("inputs".to_string()))
+        || cp_map.contains_key(&Value::String("outcomes".to_string()))
+        || cp_map.contains_key(&Value::String("systems".to_string()));
+    if !has_ios_keys {
+        errors.push("must match at least one schema in anyOf".to_string());
+    }
+
+    errors
+}
+
 fn run_protocol_loading(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec<String>> {
     let mut failures = Vec::new();
     let manifest_rel = tc
@@ -242,13 +276,28 @@ fn run_protocol_loading(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec<
     let manifest: Value = serde_yaml::from_str(&raw)
         .map_err(|e| vec![format!("failed to parse manifest {}: {}", manifest_path.display(), e)])?;
 
-    let actual_valid = manifest_has_required_shape(&manifest);
+    let ios_errors = ios_capability_profile_errors(&manifest);
+    let actual_valid = manifest_has_required_shape(&manifest) && ios_errors.is_empty();
     let expected_valid = tc.expected.valid.unwrap_or(false);
     if actual_valid != expected_valid {
         failures.push(format!(
             "valid: expected {}, got {}",
             expected_valid, actual_valid
         ));
+    }
+
+    if let Some(expected_errors) = tc.expected.errors.as_ref().and_then(Value::as_sequence) {
+        let actual_error_text = ios_errors.join(" | ");
+        for expected in expected_errors {
+            if let Some(expected_text) = expected.as_str() {
+                if !actual_error_text.contains(expected_text) {
+                    failures.push(format!(
+                        "errors: expected '{}' not found in '{}'",
+                        expected_text, actual_error_text
+                    ));
+                }
+            }
+        }
     }
 
     if expected_valid {
