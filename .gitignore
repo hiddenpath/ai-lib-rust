@@ -18,6 +18,7 @@ connectivity_report.txt
 work/
 .work/
 target-test/
+target-precheck/
 
 # Work / internal documents (do not publish)
 *REPORT*.md
