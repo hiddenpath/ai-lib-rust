@@ -6,14 +6,10 @@
 
 #[cfg(all(feature = "mcp", feature = "computer_use", feature = "multimodal"))]
 mod v2_integration {
-    use ai_lib_rust::computer_use::{
-        self, ComputerAction, ImplementationStyle, SafetyPolicy,
-    };
+    use ai_lib_rust::computer_use::{self, ComputerAction, ImplementationStyle, SafetyPolicy};
     use ai_lib_rust::drivers::create_driver;
-    use ai_lib_rust::mcp::{self, McpTool, McpToolBridge, McpToolResult, McpContent};
-    use ai_lib_rust::multimodal::{
-        Modality, MultimodalCapabilities, validate_content_modalities,
-    };
+    use ai_lib_rust::mcp::{self, McpContent, McpTool, McpToolBridge, McpToolResult};
+    use ai_lib_rust::multimodal::{validate_content_modalities, Modality, MultimodalCapabilities};
     use ai_lib_rust::protocol::v2::capabilities::Capability;
     use ai_lib_rust::protocol::v2::manifest::{ApiStyle, ManifestV2};
     use ai_lib_rust::registry::CapabilityRegistry;
@@ -79,9 +75,15 @@ multimodal:
         let driver = create_driver(
             api_style,
             &manifest.id,
-            vec![Capability::Text, Capability::Streaming, Capability::McpClient],
+            vec![
+                Capability::Text,
+                Capability::Streaming,
+                Capability::McpClient,
+            ],
         );
-        assert!(driver.supported_capabilities().contains(&Capability::McpClient));
+        assert!(driver
+            .supported_capabilities()
+            .contains(&Capability::McpClient));
 
         // Step 3: Registry — validate requirements
         let registry = CapabilityRegistry::from_capabilities(&manifest.capabilities);
@@ -91,16 +93,19 @@ multimodal:
 
         // Step 4: MCP bridge — convert tools
         let bridge = McpToolBridge::new("filesystem");
-        let mcp_tools = vec![
-            McpTool {
-                name: "read_file".into(),
-                description: Some("Read a file".into()),
-                input_schema: Some(serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}})),
-            },
-        ];
+        let mcp_tools = vec![McpTool {
+            name: "read_file".into(),
+            description: Some("Read a file".into()),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+            ),
+        }];
         let protocol_tools = bridge.mcp_tools_to_protocol(&mcp_tools);
         assert_eq!(protocol_tools.len(), 1);
-        assert_eq!(protocol_tools[0].function.name, "mcp__filesystem__read_file");
+        assert_eq!(
+            protocol_tools[0].function.name,
+            "mcp__filesystem__read_file"
+        );
 
         // Step 5: Provider config extraction
         let mcp_config = mcp::extract_provider_config(manifest.mcp.as_ref().unwrap());
@@ -109,13 +114,19 @@ multimodal:
         assert_eq!(mcp_pc.tool_type, "mcp");
 
         // Step 6: Computer Use safety
-        let cu_config = computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap());
+        let cu_config =
+            computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap());
         assert!(cu_config.is_some());
-        assert_eq!(cu_config.unwrap().implementation, ImplementationStyle::ScreenBased);
+        assert_eq!(
+            cu_config.unwrap().implementation,
+            ImplementationStyle::ScreenBased
+        );
 
         let safety = SafetyPolicy::from_config(manifest.computer_use.as_ref().unwrap());
         assert!(safety.confirmation_required);
-        let action = ComputerAction::Screenshot { format: "png".into() };
+        let action = ComputerAction::Screenshot {
+            format: "png".into(),
+        };
         assert!(safety.validate_action(&action, 0).is_ok());
 
         // Step 7: Multimodal capabilities
@@ -169,16 +180,22 @@ computer_use:
             "anthropic",
             vec![Capability::Text, Capability::ComputerUse],
         );
-        assert!(driver.supported_capabilities().contains(&Capability::ComputerUse));
+        assert!(driver
+            .supported_capabilities()
+            .contains(&Capability::ComputerUse));
 
         // MCP beta header
         let mcp_pc = mcp::extract_provider_config(manifest.mcp.as_ref().unwrap()).unwrap();
         assert_eq!(mcp_pc.beta_header.as_deref(), Some("mcp-client-2025-11-20"));
 
         // CU beta header
-        let cu_pc = computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap()).unwrap();
+        let cu_pc =
+            computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap()).unwrap();
         assert_eq!(cu_pc.tool_type, "computer_20251124");
-        assert_eq!(cu_pc.beta_header.as_deref(), Some("computer-use-2025-11-24"));
+        assert_eq!(
+            cu_pc.beta_header.as_deref(),
+            Some("computer-use-2025-11-24")
+        );
     }
 
     /// End-to-end: Gemini — tool_based CU, SDK config for MCP.
@@ -226,7 +243,8 @@ multimodal:
         assert_eq!(manifest.detect_api_style(), ApiStyle::GeminiGenerate);
 
         // Gemini: tool_based CU
-        let cu_pc = computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap()).unwrap();
+        let cu_pc =
+            computer_use::extract_provider_config(manifest.computer_use.as_ref().unwrap()).unwrap();
         assert_eq!(cu_pc.implementation, ImplementationStyle::ToolBased);
 
         // Gemini: SDK config for MCP
@@ -247,12 +265,17 @@ multimodal:
         let tool = McpTool {
             name: "calculate".into(),
             description: Some("Perform calculation".into()),
-            input_schema: Some(serde_json::json!({"type": "object", "properties": {"expr": {"type": "string"}}})),
+            input_schema: Some(
+                serde_json::json!({"type": "object", "properties": {"expr": {"type": "string"}}}),
+            ),
         };
 
         // Forward: MCP → Protocol
         let protocol_tools = bridge.mcp_tools_to_protocol(&[tool]);
-        assert_eq!(protocol_tools[0].function.name, "mcp__testserver__calculate");
+        assert_eq!(
+            protocol_tools[0].function.name,
+            "mcp__testserver__calculate"
+        );
 
         // Reverse: Protocol call → MCP invocation
         let call = ai_lib_rust::types::tool::ToolCall {
@@ -285,17 +308,23 @@ multimodal:
         policy.domain_allowlist.insert("example.com".into());
 
         // Actions within limit
-        let screenshot = ComputerAction::Screenshot { format: "png".into() };
+        let screenshot = ComputerAction::Screenshot {
+            format: "png".into(),
+        };
         assert!(policy.validate_action(&screenshot, 0).is_ok());
         assert!(policy.validate_action(&screenshot, 1).is_ok());
         assert!(policy.validate_action(&screenshot, 2).is_ok());
         assert!(policy.validate_action(&screenshot, 3).is_err()); // 4th action blocked
 
         // Domain filtering
-        let ok_nav = ComputerAction::BrowserNavigate { url: "https://example.com/page".into() };
+        let ok_nav = ComputerAction::BrowserNavigate {
+            url: "https://example.com/page".into(),
+        };
         assert!(policy.validate_action(&ok_nav, 0).is_ok());
 
-        let blocked_nav = ComputerAction::BrowserNavigate { url: "https://evil.com/phish".into() };
+        let blocked_nav = ComputerAction::BrowserNavigate {
+            url: "https://evil.com/phish".into(),
+        };
         assert!(policy.validate_action(&blocked_nav, 0).is_err());
     }
 

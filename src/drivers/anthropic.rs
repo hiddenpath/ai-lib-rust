@@ -128,11 +128,9 @@ impl ProviderDriver for AnthropicDriver {
         if let Some(t) = temperature {
             body["temperature"] = serde_json::json!(t);
         }
-        if let Some(ext) = extra {
-            if let Value::Object(map) = ext {
-                for (k, v) in map {
-                    body[k] = v.clone();
-                }
+        if let Some(Value::Object(map)) = extra {
+            for (k, v) in map {
+                body[k] = v.clone();
             }
         }
 
@@ -171,6 +169,11 @@ impl ProviderDriver for AnthropicDriver {
             completion_tokens: u["output_tokens"].as_u64().unwrap_or(0),
             total_tokens: u["input_tokens"].as_u64().unwrap_or(0)
                 + u["output_tokens"].as_u64().unwrap_or(0),
+            reasoning_tokens: None,
+            cache_read_tokens: u.get("cache_read_input_tokens").and_then(|v| v.as_u64()),
+            cache_creation_tokens: u
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64()),
         });
 
         // Extract tool_use blocks from content array
@@ -271,10 +274,7 @@ mod tests {
 
     #[test]
     fn test_system_message_extraction() {
-        let msgs = vec![
-            Message::system("You are helpful."),
-            Message::user("Hi"),
-        ];
+        let msgs = vec![Message::system("You are helpful."), Message::user("Hi")];
         let (sys, user_msgs) = AnthropicDriver::split_system_messages(&msgs);
         assert_eq!(sys.as_deref(), Some("You are helpful."));
         assert_eq!(user_msgs.len(), 1);
@@ -286,7 +286,14 @@ mod tests {
         let driver = AnthropicDriver::new("anthropic", vec![Capability::Text]);
         let messages = vec![Message::user("Hello")];
         let req = driver
-            .build_request(&messages, "claude-sonnet-4-20250514", None, Some(1024), false, None)
+            .build_request(
+                &messages,
+                "claude-sonnet-4-20250514",
+                None,
+                Some(1024),
+                false,
+                None,
+            )
             .unwrap();
         assert_eq!(req.body["max_tokens"], 1024);
         assert_eq!(req.body["model"], "claude-sonnet-4-20250514");
@@ -310,7 +317,8 @@ mod tests {
     #[test]
     fn test_anthropic_parse_stream_delta() {
         let driver = AnthropicDriver::new("anthropic", vec![]);
-        let data = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}"#;
+        let data =
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}"#;
         let event = driver.parse_stream_event(data).unwrap();
         match event {
             Some(StreamingEvent::PartialContentDelta { content, .. }) => {

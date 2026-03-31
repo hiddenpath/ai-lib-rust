@@ -53,13 +53,19 @@ fn consume_latest_v2_generative_manifests() {
             assert_eq!(manifest.detect_api_style(), ApiStyle::OpenAiCompatible);
         }
 
-        let multimodal = manifest.multimodal.as_ref().expect("multimodal section required");
+        let multimodal = manifest
+            .multimodal
+            .as_ref()
+            .expect("multimodal section required");
         let caps = MultimodalCapabilities::from_config(multimodal);
 
         assert!(caps.supports_input(Modality::Text));
         assert!(caps.supports_output(Modality::Text));
         if provider == "qwen" || provider == "google" {
-            assert!(caps.supports_input(Modality::Video), "{provider} should support video input");
+            assert!(
+                caps.supports_input(Modality::Video),
+                "{provider} should support video input"
+            );
         }
 
         // Latest schema includes output.video declaration; runtimes must not drop it.
@@ -69,7 +75,10 @@ fn consume_latest_v2_generative_manifests() {
             .and_then(|o| o.video.as_ref())
             .map(|v| v.supported)
             .unwrap_or(false);
-        assert!(!output_video_supported, "{provider} output.video expected false in current P0 manifests");
+        assert!(
+            !output_video_supported,
+            "{provider} output.video expected false in current P0 manifests"
+        );
     }
 }
 
@@ -108,7 +117,10 @@ fn consume_wave1_v2_provider_manifests() {
 
         assert!(manifest.is_v2(), "{provider} should be parsed as V2");
         assert_eq!(manifest.id, provider);
-        assert!(!manifest.base_url().is_empty(), "{provider} should expose base_url");
+        assert!(
+            !manifest.base_url().is_empty(),
+            "{provider} should expose base_url"
+        );
 
         let chat_path = manifest.endpoint.chat.as_ref().map(|p| p.as_path());
         let rerank_path = manifest.endpoint.rerank.as_ref().map(|p| p.as_path());

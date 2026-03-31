@@ -62,7 +62,7 @@ impl MiddlewareChain {
             middlewares: Vec::new(),
         }
     }
-    pub fn add(mut self, m: Arc<dyn Middleware>) -> Self {
+    pub fn with_middleware(mut self, m: Arc<dyn Middleware>) -> Self {
         self.middlewares.push(m);
         self
     }

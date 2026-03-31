@@ -31,7 +31,7 @@ async fn test_mcp_tools_list() {
     let data: serde_json::Value = resp.json().await.expect("Parse JSON failed");
     let result = data.get("result").expect("No result");
     let tools = result.get("tools").expect("No tools");
-    assert!(tools.as_array().unwrap().len() > 0);
+    assert!(!tools.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

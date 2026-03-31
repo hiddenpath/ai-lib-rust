@@ -7,7 +7,7 @@ use super::result::{Violation, ViolationType};
 pub trait ContentFilter: Send + Sync {
     /// Check content for violations
     fn check(&self, content: &str) -> Vec<Violation>;
-    
+
     /// Sanitize content by replacing violations
     fn sanitize(&self, content: &str, replacement: &str) -> String;
 }
@@ -49,7 +49,9 @@ impl KeywordFilter {
             })
             .collect();
 
-        Self { rules: compiled_rules }
+        Self {
+            rules: compiled_rules,
+        }
     }
 
     /// Add a keyword rule
@@ -104,10 +106,10 @@ impl ContentFilter for KeywordFilter {
                     // Case-insensitive replacement
                     let lower = result.to_lowercase();
                     let keyword_lower = &rule.keyword_lower;
-                    
+
                     let mut new_result = String::new();
                     let mut last_end = 0;
-                    
+
                     for (start, _) in lower.match_indices(keyword_lower) {
                         new_result.push_str(&result[last_end..start]);
                         new_result.push_str(replacement);
@@ -158,7 +160,9 @@ impl PatternFilter {
             })
             .collect();
 
-        Self { rules: compiled_rules }
+        Self {
+            rules: compiled_rules,
+        }
     }
 
     /// Add a pattern rule
@@ -179,7 +183,7 @@ impl PatternFilter {
         } else {
             format!("(?i){}", pattern)
         };
-        
+
         regex::Regex::new(&pattern_str).ok()
     }
 }

@@ -32,16 +32,20 @@
 //! use ai_lib_rust::protocol::{ProtocolLoader, ProtocolValidator};
 //!
 //! #[tokio::main]
-//! async fn main() -> ai_lib_rust::Result<()> {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Load a protocol manifest
 //!     let loader = ProtocolLoader::new();
-//!     let manifest = loader.load_from_file("protocols/openai.yaml").await?;
+//!     let manifest = loader.load_provider("openai").await?;
 //!     
 //!     // Validate the manifest
 //!     let validator = ProtocolValidator::new()?;
 //!     validator.validate(&manifest)?;
 //!     
-//!     println!("Protocol: {} v{}", manifest.name, manifest.version);
+//!     println!(
+//!         "Protocol: {} v{}",
+//!         manifest.name.as_deref().unwrap_or(&manifest.id),
+//!         manifest.version.as_deref().unwrap_or("unknown")
+//!     );
 //!     Ok(())
 //! }
 //! ```
@@ -62,5 +66,5 @@ pub use loader::ProtocolLoader;
 pub use manifest::ProtocolManifest;
 pub use request::UnifiedRequest;
 pub use schema::ProtocolSchema;
-pub use v2::{ManifestV2, CapabilitiesV2, Capability, FeatureFlags};
+pub use v2::{CapabilitiesV2, Capability, FeatureFlags, ManifestV2};
 pub use validator::ProtocolValidator;

@@ -33,23 +33,18 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use ai_lib_rust::{AiClient, AiClientBuilder, Message, MessageRole};
+//! use ai_lib_rust::{AiClient, Message};
 //!
 //! #[tokio::main]
 //! async fn main() -> ai_lib_rust::Result<()> {
-//!     let client = AiClientBuilder::new()
-//!         .with_protocol_path("protocols/openai.yaml")?
-//!         .with_api_key("your-api-key")
-//!         .build()?;
+//!     let client = AiClient::new("openai/gpt-4o-mini").await?;
+//!     let response = client
+//!         .chat()
+//!         .messages(vec![Message::user("Hello, how are you?")])
+//!         .execute()
+//!         .await?;
 //!
-//!     let messages = vec![
-//!         Message::user("Hello, how are you?"),
-//!     ];
-//!
-//!     // Streaming response
-//!     let mut stream = client.chat_stream(&messages, None).await?;
-//!     // Process stream events...
-//!     
+//!     println!("{}", response.content);
 //!     Ok(())
 //! }
 //! ```
@@ -98,28 +93,28 @@ pub mod guardrails;
 pub mod mcp;
 #[cfg(feature = "multimodal")]
 pub mod multimodal;
-#[cfg(feature = "tokens")]
-pub mod tokens;
-#[cfg(feature = "telemetry")]
-pub mod telemetry;
-#[cfg(feature = "stt")]
-pub mod stt;
-#[cfg(feature = "tts")]
-pub mod tts;
 #[cfg(feature = "reranking")]
 pub mod rerank;
+#[cfg(feature = "stt")]
+pub mod stt;
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+#[cfg(feature = "tokens")]
+pub mod tokens;
+#[cfg(feature = "tts")]
+pub mod tts;
 
 // Infrastructure modules (feature-gated)
-#[cfg(feature = "routing_mvp")]
-pub mod routing;
 #[cfg(feature = "interceptors")]
 pub mod interceptors;
+#[cfg(feature = "routing_mvp")]
+pub mod routing;
 
 // Re-export main types for convenience
 pub use client::CallStats;
 pub use client::CancelHandle;
-pub use client::ClientMetrics;
 pub use client::ChatBatchRequest;
+pub use client::ClientMetrics;
 pub use client::EndpointExt;
 pub use client::{AiClient, AiClientBuilder};
 

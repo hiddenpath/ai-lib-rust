@@ -14,7 +14,7 @@ fn test_end_to_end_json_mode_schema_validation() {
         .description("A user object")
         .add_property("name", json!({"type": "string"}))
         .add_property("age", json!({"type": "integer"}))
-        .set_required(&vec!["name".to_string(), "age".to_string()]);
+        .set_required(&["name".to_string(), "age".to_string()]);
 
     let json_schema = schema.build();
 

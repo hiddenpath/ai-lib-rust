@@ -56,7 +56,7 @@ struct TestInput {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct TestExpected {
     #[serde(default)]
     valid: Option<bool>,
@@ -76,22 +76,6 @@ struct TestExpected {
     fallbackable: Option<bool>,
     #[serde(flatten)]
     extra: HashMap<String, Value>,
-}
-
-impl Default for TestExpected {
-    fn default() -> Self {
-        Self {
-            valid: None,
-            provider_id: None,
-            protocol_version: None,
-            errors: None,
-            error_code: None,
-            error_name: None,
-            retryable: None,
-            fallbackable: None,
-            extra: HashMap::new(),
-        }
-    }
 }
 
 fn compliance_dir() -> PathBuf {
@@ -130,7 +114,7 @@ fn discover_yaml_files(dir: &Path) -> Vec<PathBuf> {
             let path = entry.path();
             if path.is_dir() {
                 files.extend(discover_yaml_files(&path));
-            } else if path.extension().map_or(false, |e| e == "yaml" || e == "yml") {
+            } else if path.extension().is_some_and(|e| e == "yaml" || e == "yml") {
                 files.push(path);
             }
         }
@@ -158,7 +142,10 @@ fn parse_test_cases(content: &str) -> Vec<TestCase> {
 }
 
 fn run_error_classification(tc: &TestCase) -> Result<(), Vec<String>> {
-    let http_status = tc.input.http_status.expect("error_classification requires http_status");
+    let http_status = tc
+        .input
+        .http_status
+        .expect("error_classification requires http_status");
     let response_body = tc.input.response_body.as_ref();
     let actual = classify_error_from_response(http_status, response_body);
 
@@ -209,7 +196,11 @@ fn run_error_classification(tc: &TestCase) -> Result<(), Vec<String>> {
 }
 
 fn manifest_has_required_shape(manifest: &Value) -> bool {
-    let id_ok = manifest.get("id").and_then(Value::as_str).map(|s| !s.is_empty()).unwrap_or(false);
+    let id_ok = manifest
+        .get("id")
+        .and_then(Value::as_str)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
     let pv_ok = manifest
         .get("protocol_version")
         .and_then(Value::as_str)
@@ -218,7 +209,7 @@ fn manifest_has_required_shape(manifest: &Value) -> bool {
     let endpoint_ok = manifest
         .get("endpoint")
         .and_then(Value::as_mapping)
-        .and_then(|m| m.get(&Value::String("base_url".to_string())))
+        .and_then(|m| m.get(Value::String("base_url".to_string())))
         .and_then(Value::as_str)
         .map(|s| !s.is_empty())
         .unwrap_or(false);
@@ -234,21 +225,21 @@ fn capability_profile_phase_errors(manifest: &Value) -> Vec<String> {
     };
 
     let phase = cp_map
-        .get(&Value::String("phase".to_string()))
+        .get(Value::String("phase".to_string()))
         .and_then(Value::as_str)
         .unwrap_or_default();
 
     let mut errors = Vec::new();
     let has_ios_keys = || {
-        cp_map.contains_key(&Value::String("inputs".to_string()))
-            || cp_map.contains_key(&Value::String("outcomes".to_string()))
-            || cp_map.contains_key(&Value::String("systems".to_string()))
+        cp_map.contains_key(Value::String("inputs".to_string()))
+            || cp_map.contains_key(Value::String("outcomes".to_string()))
+            || cp_map.contains_key(Value::String("systems".to_string()))
     };
 
     match phase {
         "ios_v1" => {
-            if cp_map.contains_key(&Value::String("process".to_string()))
-                || cp_map.contains_key(&Value::String("contract".to_string()))
+            if cp_map.contains_key(Value::String("process".to_string()))
+                || cp_map.contains_key(Value::String("contract".to_string()))
             {
                 errors.push("must NOT have additional properties".to_string());
             }
@@ -260,8 +251,8 @@ fn capability_profile_phase_errors(manifest: &Value) -> Vec<String> {
             if !has_ios_keys() {
                 errors.push("iospc_v1 requires inputs or outcomes or systems".to_string());
             }
-            if !cp_map.contains_key(&Value::String("process".to_string()))
-                && !cp_map.contains_key(&Value::String("contract".to_string()))
+            if !cp_map.contains_key(Value::String("process".to_string()))
+                && !cp_map.contains_key(Value::String("contract".to_string()))
             {
                 errors.push("iospc_v1 requires process or contract".to_string());
             }
@@ -285,10 +276,20 @@ fn run_protocol_loading(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec<
     };
 
     let manifest_path = compliance_dir.join(manifest_rel);
-    let raw = fs::read_to_string(&manifest_path)
-        .map_err(|e| vec![format!("failed to read manifest {}: {}", manifest_path.display(), e)])?;
-    let manifest: Value = serde_yaml::from_str(&raw)
-        .map_err(|e| vec![format!("failed to parse manifest {}: {}", manifest_path.display(), e)])?;
+    let raw = fs::read_to_string(&manifest_path).map_err(|e| {
+        vec![format!(
+            "failed to read manifest {}: {}",
+            manifest_path.display(),
+            e
+        )]
+    })?;
+    let manifest: Value = serde_yaml::from_str(&raw).map_err(|e| {
+        vec![format!(
+            "failed to parse manifest {}: {}",
+            manifest_path.display(),
+            e
+        )]
+    })?;
 
     let cp_errors = capability_profile_phase_errors(&manifest);
     let actual_valid = manifest_has_required_shape(&manifest) && cp_errors.is_empty();
@@ -316,7 +317,10 @@ fn run_protocol_loading(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec<
 
     if expected_valid {
         if let Some(expected_provider_id) = tc.expected.provider_id.as_ref() {
-            let got = manifest.get("id").and_then(Value::as_str).unwrap_or_default();
+            let got = manifest
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if got != expected_provider_id {
                 failures.push(format!(
                     "provider_id: expected {}, got {}",
@@ -379,7 +383,10 @@ fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         .unwrap_or(0) as u32;
 
     let mut retry_on_error_code = HashSet::new();
-    if let Some(items) = retry_policy.get("retry_on_error_code").and_then(Value::as_sequence) {
+    if let Some(items) = retry_policy
+        .get("retry_on_error_code")
+        .and_then(Value::as_sequence)
+    {
         for item in items {
             if let Some(name) = item.as_str() {
                 retry_on_error_code.insert(name.to_string());
@@ -405,13 +412,18 @@ fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
     }
 
     if expected_should_retry {
-        if let Some(delay_cfg) = tc.expected.extra.get("delay_ms").and_then(Value::as_mapping) {
+        if let Some(delay_cfg) = tc
+            .expected
+            .extra
+            .get("delay_ms")
+            .and_then(Value::as_mapping)
+        {
             let min_expected = delay_cfg
-                .get(&Value::String("min".to_string()))
+                .get(Value::String("min".to_string()))
                 .and_then(Value::as_u64)
                 .unwrap_or(0);
             let max_expected = delay_cfg
-                .get(&Value::String("max".to_string()))
+                .get(Value::String("max".to_string()))
                 .and_then(Value::as_u64)
                 .unwrap_or(u64::MAX);
             let actual_delay = compute_retry_delay_ms(retry_policy, attempt);
@@ -445,7 +457,7 @@ fn run_message_building(tc: &TestCase) -> Result<(), Vec<String>> {
         .extra
         .get("normalized_body")
         .and_then(Value::as_mapping)
-        .and_then(|m| m.get(&Value::String("messages".to_string())))
+        .and_then(|m| m.get(Value::String("messages".to_string())))
         .and_then(Value::as_sequence)
         .cloned()
         .unwrap_or_default();
@@ -465,7 +477,11 @@ fn run_message_building(tc: &TestCase) -> Result<(), Vec<String>> {
             messages.len()
         ));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_parameter_mapping(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec<String>> {
@@ -478,11 +494,7 @@ fn run_parameter_mapping(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec
         .cloned()
         .unwrap_or_default();
 
-    if let Some(manifest_rel) = tc
-        .setup
-        .as_ref()
-        .and_then(|s| s.manifest_path.as_ref())
-    {
+    if let Some(manifest_rel) = tc.setup.as_ref().and_then(|s| s.manifest_path.as_ref()) {
         let manifest_path = compliance_dir.join(manifest_rel);
         if let Ok(raw) = fs::read_to_string(&manifest_path) {
             if let Ok(manifest) = serde_yaml::from_str::<Value>(&raw) {
@@ -491,7 +503,7 @@ fn run_parameter_mapping(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec
                         if !provider_params.contains_key(k) {
                             if let Some(default_v) = v
                                 .as_mapping()
-                                .and_then(|m| m.get(&Value::String("default".to_string())))
+                                .and_then(|m| m.get(Value::String("default".to_string())))
                             {
                                 provider_params.insert(k.clone(), default_v.clone());
                             }
@@ -515,7 +527,11 @@ fn run_parameter_mapping(tc: &TestCase, compliance_dir: &Path) -> Result<(), Vec
             expected_provider_params, provider_params
         ));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_stream_decode(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -535,11 +551,11 @@ fn run_stream_decode(tc: &TestCase) -> Result<(), Vec<String>> {
         .cloned()
         .unwrap_or_default();
     let prefix = decoder_cfg
-        .get(&Value::String("prefix".to_string()))
+        .get(Value::String("prefix".to_string()))
         .and_then(Value::as_str)
         .unwrap_or("data: ");
     let done_signal = decoder_cfg
-        .get(&Value::String("done_signal".to_string()))
+        .get(Value::String("done_signal".to_string()))
         .and_then(Value::as_str)
         .unwrap_or("[DONE]");
 
@@ -575,17 +591,19 @@ fn run_stream_decode(tc: &TestCase) -> Result<(), Vec<String>> {
         .and_then(Value::as_mapping)
     {
         let min_expected = frame_count
-            .get(&Value::String("min".to_string()))
+            .get(Value::String("min".to_string()))
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize;
         let max_expected = frame_count
-            .get(&Value::String("max".to_string()))
+            .get(Value::String("max".to_string()))
             .and_then(Value::as_u64)
             .unwrap_or(u64::MAX) as usize;
         if frames.len() < min_expected || frames.len() > max_expected {
             failures.push(format!(
                 "frame_count: expected in [{}, {}], got {}",
-                min_expected, max_expected, frames.len()
+                min_expected,
+                max_expected,
+                frames.len()
             ));
         }
     }
@@ -601,7 +619,11 @@ fn run_stream_decode(tc: &TestCase) -> Result<(), Vec<String>> {
         failures.push("done_received: expected true".to_string());
     }
 
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_event_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -625,20 +647,26 @@ fn run_event_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
         if let Some(content) = first_choice
             .get("delta")
             .and_then(Value::as_mapping)
-            .and_then(|m| m.get(&Value::String("content".to_string())))
+            .and_then(|m| m.get(Value::String("content".to_string())))
         {
             let mut e = HashMap::new();
-            e.insert("type".to_string(), Value::String("PartialContentDelta".to_string()));
+            e.insert(
+                "type".to_string(),
+                Value::String("PartialContentDelta".to_string()),
+            );
             e.insert("content".to_string(), content.clone());
             actual_events.push(serde_yaml::to_value(e).unwrap_or(Value::Null));
         }
         if let Some(tool_calls) = first_choice
             .get("delta")
             .and_then(Value::as_mapping)
-            .and_then(|m| m.get(&Value::String("tool_calls".to_string())))
+            .and_then(|m| m.get(Value::String("tool_calls".to_string())))
         {
             let mut e = HashMap::new();
-            e.insert("type".to_string(), Value::String("PartialToolCall".to_string()));
+            e.insert(
+                "type".to_string(),
+                Value::String("PartialToolCall".to_string()),
+            );
             e.insert("tool_calls".to_string(), tool_calls.clone());
             actual_events.push(serde_yaml::to_value(e).unwrap_or(Value::Null));
         }
@@ -665,12 +693,7 @@ fn run_event_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
             expected_events, actual_events
         ));
     }
-    if let Some(expected_count) = tc
-        .expected
-        .extra
-        .get("event_count")
-        .and_then(Value::as_u64)
-    {
+    if let Some(expected_count) = tc.expected.extra.get("event_count").and_then(Value::as_u64) {
         if actual_events.len() != expected_count as usize {
             failures.push(format!(
                 "event_count: expected {}, got {}",
@@ -679,7 +702,11 @@ fn run_event_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
             ));
         }
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_tool_accumulation(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -695,18 +722,22 @@ fn run_tool_accumulation(tc: &TestCase) -> Result<(), Vec<String>> {
     let mut assembled: Vec<Value> = Vec::new();
     for chunk in chunks {
         let index = chunk.get("index").and_then(Value::as_i64).unwrap_or(0);
-        let id = chunk.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let id = chunk
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         let name = chunk
             .get("function")
             .and_then(Value::as_mapping)
-            .and_then(|m| m.get(&Value::String("name".to_string())))
+            .and_then(|m| m.get(Value::String("name".to_string())))
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
         let args = chunk
             .get("function")
             .and_then(Value::as_mapping)
-            .and_then(|m| m.get(&Value::String("arguments".to_string())))
+            .and_then(|m| m.get(Value::String("arguments".to_string())))
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
@@ -719,13 +750,13 @@ fn run_tool_accumulation(tc: &TestCase) -> Result<(), Vec<String>> {
                 let cur = item
                     .get("function")
                     .and_then(Value::as_mapping)
-                    .and_then(|m| m.get(&Value::String("arguments".to_string())))
+                    .and_then(|m| m.get(Value::String("arguments".to_string())))
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string();
                 if let Some(func) = item
                     .as_mapping_mut()
-                    .and_then(|m| m.get_mut(&Value::String("function".to_string())))
+                    .and_then(|m| m.get_mut(Value::String("function".to_string())))
                     .and_then(Value::as_mapping_mut)
                 {
                     func.insert(
@@ -746,7 +777,10 @@ fn run_tool_accumulation(tc: &TestCase) -> Result<(), Vec<String>> {
             tool.insert("id".to_string(), Value::String(id));
             tool.insert(
                 "type".to_string(),
-                chunk.get("type").cloned().unwrap_or(Value::String("function".to_string())),
+                chunk
+                    .get("type")
+                    .cloned()
+                    .unwrap_or(Value::String("function".to_string())),
             );
             tool.insert(
                 "function".to_string(),
@@ -769,7 +803,11 @@ fn run_tool_accumulation(tc: &TestCase) -> Result<(), Vec<String>> {
             expected_calls, assembled
         ));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_capability_guard(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -798,7 +836,7 @@ fn run_capability_guard(tc: &TestCase) -> Result<(), Vec<String>> {
         if let Some(seq) = caps.as_sequence() {
             seq.iter().any(|v| v.as_str() == Some(cap_key))
         } else if let Some(map) = caps.as_mapping() {
-            map.contains_key(&Value::String(cap_key.to_string()))
+            map.contains_key(Value::String(cap_key.to_string()))
         } else {
             false
         }
@@ -810,7 +848,11 @@ fn run_capability_guard(tc: &TestCase) -> Result<(), Vec<String>> {
     if actual != expected {
         failures.push(format!("error_code: expected {}, got {}", expected, actual));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_advanced_endpoint_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -865,9 +907,16 @@ fn run_advanced_endpoint_mapping(tc: &TestCase) -> Result<(), Vec<String>> {
         failures.push(format!("path: expected {}, got {}", expected_path, path));
     }
     if !expected_method.is_empty() && method != expected_method {
-        failures.push(format!("method: expected {}, got {}", expected_method, method));
+        failures.push(format!(
+            "method: expected {}, got {}",
+            expected_method, method
+        ));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_fallback_decision(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -878,7 +927,10 @@ fn run_fallback_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         .get("error_code")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let should = matches!(code, "E1002" | "E2001" | "E2002" | "E3001" | "E3002" | "E3003");
+    let should = matches!(
+        code,
+        "E1002" | "E2001" | "E2002" | "E3001" | "E3002" | "E3003"
+    );
     let expected = tc
         .expected
         .extra
@@ -886,9 +938,16 @@ fn run_fallback_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if should != expected {
-        failures.push(format!("should_fallback: expected {}, got {}", expected, should));
+        failures.push(format!(
+            "should_fallback: expected {}, got {}",
+            expected, should
+        ));
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn run_provider_mock_behavior(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -905,25 +964,45 @@ fn run_provider_mock_behavior(tc: &TestCase) -> Result<(), Vec<String>> {
         .clone()
         .or_else(|| tc.input.extra.get("response_body").cloned())
         .unwrap_or(Value::Null);
-    if let Some(asserts) = tc.expected.extra.get("request_assert").and_then(Value::as_mapping) {
+    if let Some(asserts) = tc
+        .expected
+        .extra
+        .get("request_assert")
+        .and_then(Value::as_mapping)
+    {
         for (k, v) in asserts {
             let path = k.as_str().unwrap_or_default();
             let got = value_at_path(&req, path);
             if got != Some(v) {
-                failures.push(format!("request_assert {}: expected {:?}, got {:?}", path, v, got));
+                failures.push(format!(
+                    "request_assert {}: expected {:?}, got {:?}",
+                    path, v, got
+                ));
             }
         }
     }
-    if let Some(asserts) = tc.expected.extra.get("response_assert").and_then(Value::as_mapping) {
+    if let Some(asserts) = tc
+        .expected
+        .extra
+        .get("response_assert")
+        .and_then(Value::as_mapping)
+    {
         for (k, v) in asserts {
             let path = k.as_str().unwrap_or_default();
             let got = value_at_path(&resp, path);
             if got != Some(v) {
-                failures.push(format!("response_assert {}: expected {:?}, got {:?}", path, v, got));
+                failures.push(format!(
+                    "response_assert {}: expected {:?}, got {:?}",
+                    path, v, got
+                ));
             }
         }
     }
-    if failures.is_empty() { Ok(()) } else { Err(failures) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
 }
 
 fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
@@ -931,7 +1010,7 @@ fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
     for part in path.split('.') {
         match cur {
             Value::Mapping(m) => {
-                cur = m.get(&Value::String(part.to_string()))?;
+                cur = m.get(Value::String(part.to_string()))?;
             }
             Value::Sequence(s) => {
                 let idx: usize = part.parse().ok()?;
@@ -1074,7 +1153,11 @@ fn compliance_protocol_loading() {
     println!("  Passed: {}", passed);
     println!("  Failed: {}", failed);
 
-    assert_eq!(failed, 0, "{} protocol_loading compliance test(s) failed", failed);
+    assert_eq!(
+        failed, 0,
+        "{} protocol_loading compliance test(s) failed",
+        failed
+    );
 }
 
 #[test]
@@ -1136,7 +1219,11 @@ fn compliance_retry_decision() {
     println!("  Passed: {}", passed);
     println!("  Failed: {}", failed);
 
-    assert_eq!(failed, 0, "{} retry_decision compliance test(s) failed", failed);
+    assert_eq!(
+        failed, 0,
+        "{} retry_decision compliance test(s) failed",
+        failed
+    );
 }
 
 #[test]

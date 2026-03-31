@@ -95,9 +95,39 @@ impl RuleBasedEventMapper {
                     stop_reason: None,
                 })
             }
-            "StreamEnd" => Some(StreamingEvent::StreamEnd {
-                finish_reason: None,
-            }),
+            "ThinkingDelta" => {
+                let mut thinking: Option<String> = None;
+                for (k, p) in extract {
+                    if k == "thinking" {
+                        thinking = crate::utils::PathMapper::get_string(frame, p);
+                    }
+                }
+                let thinking = thinking.or_else(|| {
+                    crate::utils::PathMapper::get_string(
+                        frame,
+                        "$.choices[0].delta.reasoning_content",
+                    )
+                })?;
+                if thinking.is_empty() {
+                    return None;
+                }
+                Some(StreamingEvent::ThinkingDelta {
+                    thinking,
+                    tool_consideration: None,
+                })
+            }
+            "StreamEnd" => {
+                let mut finish: Option<String> = None;
+                for (k, p) in extract {
+                    if k == "finish_reason" {
+                        finish = crate::utils::PathMapper::get_string(frame, p);
+                    }
+                }
+                let finish_reason = finish.or_else(|| {
+                    crate::utils::PathMapper::get_string(frame, "$.choices[0].finish_reason")
+                });
+                Some(StreamingEvent::StreamEnd { finish_reason })
+            }
             _ => None,
         }
     }
@@ -190,6 +220,21 @@ impl Mapper for OpenAiStyleEventMapper {
                             }
                         }
 
+                        if let Some(thinking) = crate::utils::PathMapper::get_string(
+                            &frame,
+                            "$.choices[0].delta.reasoning_content",
+                        ) {
+                            if !thinking.is_empty() {
+                                return Some((
+                                    Ok(StreamingEvent::ThinkingDelta {
+                                        thinking,
+                                        tool_consideration: None,
+                                    }),
+                                    (input, ended),
+                                ));
+                            }
+                        }
+
                         // usage metadata (rare in streaming but possible)
                         if let Some(usage) =
                             crate::utils::PathMapper::get_path(&frame, "$.usage").cloned()
@@ -202,6 +247,20 @@ impl Mapper for OpenAiStyleEventMapper {
                                 }),
                                 (input, ended),
                             ));
+                        }
+
+                        if let Some(reason) = crate::utils::PathMapper::get_string(
+                            &frame,
+                            "$.choices[0].finish_reason",
+                        ) {
+                            if !reason.is_empty() {
+                                return Some((
+                                    Ok(StreamingEvent::StreamEnd {
+                                        finish_reason: Some(reason),
+                                    }),
+                                    (input, ended),
+                                ));
+                            }
                         }
 
                         continue;
@@ -332,8 +391,6 @@ fn extract_by_tooling(
         let v = crate::utils::PathMapper::get_path(tc, p)?;
         if let Some(s) = v.as_str() {
             Some(s.to_string())
-        } else if v.is_object() || v.is_array() {
-            serde_json::to_string(v).ok()
         } else {
             serde_json::to_string(v).ok()
         }
@@ -470,6 +527,29 @@ impl Mapper for PathEventMapper {
                                                 });
                                             }
                                         }
+                                    }
+                                }
+
+                                if let Some(thinking) = crate::utils::PathMapper::get_string(
+                                    &frame,
+                                    "$.choices[0].delta.reasoning_content",
+                                ) {
+                                    if !thinking.is_empty() {
+                                        q.push_back(StreamingEvent::ThinkingDelta {
+                                            thinking,
+                                            tool_consideration: None,
+                                        });
+                                    }
+                                }
+
+                                if let Some(reason) = crate::utils::PathMapper::get_string(
+                                    &frame,
+                                    "$.choices[0].finish_reason",
+                                ) {
+                                    if !reason.is_empty() {
+                                        q.push_back(StreamingEvent::StreamEnd {
+                                            finish_reason: Some(reason),
+                                        });
                                     }
                                 }
 

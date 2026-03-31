@@ -326,11 +326,11 @@ mod tests {
     fn test_find_most_similar_cosine() {
         let query = vec![1.0, 0.0, 0.0];
         let candidates = vec![
-            vec![1.0, 0.0, 0.0],  // identical
-            vec![0.0, 1.0, 0.0],  // orthogonal
-            vec![0.7, 0.7, 0.0],  // 45 degrees
+            vec![1.0, 0.0, 0.0], // identical
+            vec![0.0, 1.0, 0.0], // orthogonal
+            vec![0.7, 0.7, 0.0], // 45 degrees
         ];
-        
+
         let results = find_most_similar(&query, &candidates, 2, SimilarityMetric::Cosine).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].index, 0); // Identical should be first
@@ -341,12 +341,13 @@ mod tests {
     fn test_find_most_similar_euclidean() {
         let query = vec![0.0, 0.0];
         let candidates = vec![
-            vec![1.0, 0.0],  // distance 1
-            vec![3.0, 4.0],  // distance 5
-            vec![0.5, 0.5],  // distance ~0.7
+            vec![1.0, 0.0], // distance 1
+            vec![3.0, 4.0], // distance 5
+            vec![0.5, 0.5], // distance ~0.7
         ];
-        
-        let results = find_most_similar(&query, &candidates, 2, SimilarityMetric::Euclidean).unwrap();
+
+        let results =
+            find_most_similar(&query, &candidates, 2, SimilarityMetric::Euclidean).unwrap();
         assert_eq!(results.len(), 2);
         // Euclidean: smaller is better, so closest first
         assert_eq!(results[0].index, 2); // 0.5, 0.5 is closest
@@ -361,17 +362,14 @@ mod tests {
             vec![0.8, 0.2],
             vec![0.0, 1.0],
         ];
-        
+
         let results = find_most_similar(&query, &candidates, 2, SimilarityMetric::Cosine).unwrap();
         assert_eq!(results.len(), 2);
     }
 
     #[test]
     fn test_average_vectors_basic() {
-        let vectors = vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0],
-        ];
+        let vectors = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
         let result = average_vectors(&vectors).unwrap();
         // [(1+3)/2, (2+4)/2] = [2, 3]
         assert!(approx_eq(result[0], 2.0));
@@ -386,19 +384,13 @@ mod tests {
 
     #[test]
     fn test_average_vectors_dimension_mismatch() {
-        let vectors = vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0, 5.0],
-        ];
+        let vectors = vec![vec![1.0, 2.0], vec![3.0, 4.0, 5.0]];
         assert!(average_vectors(&vectors).is_err());
     }
 
     #[test]
     fn test_weighted_average_vectors_basic() {
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-        ];
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
         let weights = vec![1.0, 1.0];
         let result = weighted_average_vectors(&vectors, &weights).unwrap();
         // Equal weights: [0.5, 0.5]
@@ -408,10 +400,7 @@ mod tests {
 
     #[test]
     fn test_weighted_average_vectors_unequal() {
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-        ];
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
         let weights = vec![3.0, 1.0]; // 75% first, 25% second
         let result = weighted_average_vectors(&vectors, &weights).unwrap();
         assert!(approx_eq(result[0], 0.75));

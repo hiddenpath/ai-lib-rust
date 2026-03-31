@@ -71,7 +71,7 @@ impl CheckResult {
     pub fn from_violations(violations: Vec<Violation>) -> Self {
         let blocked = violations.iter().any(|v| v.is_blocking());
         let warned = violations.iter().any(|v| v.is_warning());
-        
+
         Self {
             violations,
             blocked,

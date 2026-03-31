@@ -3,10 +3,11 @@
 //! Uses ai-protocol-mock when MOCK_HTTP_URL is set. Run with:
 //!   MOCK_HTTP_URL=http://localhost:4010 cargo test integration::streaming -- --ignored --nocapture
 
-use ai_lib_rust::prelude::*;
-use ai_lib_rust::AiClientBuilder;
-use futures::StreamExt;
 use crate::integration::mock_server::MockServerFixture;
+use ai_lib_rust::types::events::StreamingEvent;
+use ai_lib_rust::AiClientBuilder;
+use ai_lib_rust::Message;
+use futures::StreamExt;
 
 #[tokio::test]
 async fn test_sse_streaming_response_mockito() {
@@ -58,7 +59,7 @@ async fn test_sse_streaming_via_mock() {
 
     let mut collected = String::new();
     while let Some(ev) = stream.next().await {
-        if let Ok(StreamingEvent::PartialContentDelta { content }) = ev {
+        if let Ok(StreamingEvent::PartialContentDelta { content, .. }) = ev {
             collected.push_str(&content);
         }
     }
@@ -75,15 +76,15 @@ async fn test_streaming_cancellation() {
 async fn test_ndjson_streaming() {
     // Test NDJSON/JSONL streaming format
     let fixture = MockServerFixture::new().await;
-    
+
     let body = r#"{"content":"Chunk 1"}
 {"content":"Chunk 2"}
 {"content":"Chunk 3"}
 "#;
-    
+
     let _mock = fixture
         .mock_json_response("/v1/chat/completions", 200, body)
         .await;
-    
+
     // Test NDJSON parsing
 }

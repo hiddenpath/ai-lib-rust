@@ -5,18 +5,14 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum PluginPriority {
     Highest = 0,
     High = 25,
+    #[default]
     Normal = 50,
     Low = 75,
     Lowest = 100,
-}
-impl Default for PluginPriority {
-    fn default() -> Self {
-        PluginPriority::Normal
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -102,7 +98,7 @@ impl CompositePlugin {
             plugins: Vec::new(),
         }
     }
-    pub fn add(mut self, p: Arc<dyn Plugin>) -> Self {
+    pub fn with_plugin(mut self, p: Arc<dyn Plugin>) -> Self {
         self.plugins.push(p);
         self
     }

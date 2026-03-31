@@ -109,7 +109,7 @@ mod tests {
     fn test_schema_generator_with_required() {
         let generator = SchemaGenerator::new()
             .add_property("name", json!({"type": "string"}))
-            .set_required(&vec!["name".to_string()]);
+            .set_required(&["name".to_string()]);
 
         let schema = generator.build();
         assert!(schema["required"].is_array());

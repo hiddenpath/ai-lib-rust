@@ -183,7 +183,7 @@ mod tests {
         let cb = CircuitBreaker::new(CircuitBreakerConfig::default());
         assert!(cb.allow().is_ok());
         assert!(cb.allow_request());
-        
+
         let snapshot = cb.snapshot();
         assert_eq!(snapshot.consecutive_failures, 0);
         assert!(snapshot.open_remaining_ms.is_none());
@@ -193,12 +193,12 @@ mod tests {
     fn test_circuit_breaker_success_resets_failures() {
         let config = CircuitBreakerConfig::new().with_failure_threshold(5);
         let cb = CircuitBreaker::new(config);
-        
+
         // Record some failures
         cb.on_failure();
         cb.on_failure();
         assert_eq!(cb.snapshot().consecutive_failures, 2);
-        
+
         // Success resets counter
         cb.on_success();
         assert_eq!(cb.snapshot().consecutive_failures, 0);
@@ -210,12 +210,12 @@ mod tests {
             .with_failure_threshold(3)
             .with_cooldown(Duration::from_millis(100));
         let cb = CircuitBreaker::new(config);
-        
+
         // Below threshold - still closed
         cb.on_failure();
         cb.on_failure();
         assert!(cb.allow().is_ok());
-        
+
         // At threshold - opens
         cb.on_failure();
         assert!(cb.allow().is_err());
@@ -228,15 +228,15 @@ mod tests {
             .with_failure_threshold(2)
             .with_cooldown(Duration::from_millis(50));
         let cb = CircuitBreaker::new(config);
-        
+
         // Open the circuit
         cb.on_failure();
         cb.on_failure();
         assert!(cb.allow().is_err());
-        
+
         // Wait for cooldown
         thread::sleep(Duration::from_millis(60));
-        
+
         // Should be closed again
         assert!(cb.allow().is_ok());
         assert_eq!(cb.snapshot().consecutive_failures, 0);
@@ -248,10 +248,10 @@ mod tests {
             .with_failure_threshold(5)
             .with_cooldown(Duration::from_secs(30));
         let cb = CircuitBreaker::new(config);
-        
+
         cb.on_failure();
         cb.on_failure();
-        
+
         let snapshot = cb.snapshot();
         assert_eq!(snapshot.failure_threshold, 5);
         assert_eq!(snapshot.cooldown_ms, 30_000);
@@ -262,10 +262,10 @@ mod tests {
     #[test]
     fn test_circuit_breaker_thread_safe() {
         use std::sync::Arc;
-        
+
         let config = CircuitBreakerConfig::new().with_failure_threshold(100);
         let cb = Arc::new(CircuitBreaker::new(config));
-        
+
         let mut handles = vec![];
         for _ in 0..10 {
             let cb_clone = Arc::clone(&cb);
@@ -275,11 +275,11 @@ mod tests {
                 }
             }));
         }
-        
+
         for h in handles {
             h.join().unwrap();
         }
-        
+
         assert_eq!(cb.snapshot().consecutive_failures, 50);
     }
 
@@ -287,12 +287,12 @@ mod tests {
     fn test_circuit_breaker_saturating_failures() {
         let config = CircuitBreakerConfig::new().with_failure_threshold(u32::MAX);
         let cb = CircuitBreaker::new(config);
-        
+
         // Record many failures - should not overflow
         for _ in 0..1000 {
             cb.on_failure();
         }
-        
+
         assert_eq!(cb.snapshot().consecutive_failures, 1000);
     }
 }

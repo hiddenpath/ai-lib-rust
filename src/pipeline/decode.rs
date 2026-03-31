@@ -83,8 +83,8 @@ impl Decoder for SseDecoder {
                     // Strip prefix if present
                     let payload = if trimmed.starts_with(&prefix) {
                         &trimmed[prefix.len()..]
-                    } else if trimmed.starts_with("data:") {
-                        trimmed[5..].trim_start()
+                    } else if let Some(stripped) = trimmed.strip_prefix("data:") {
+                        stripped.trim_start()
                     } else {
                         trimmed
                     };

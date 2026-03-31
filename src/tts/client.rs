@@ -19,7 +19,11 @@ impl TtsClient {
     }
 
     pub async fn synthesize(&self, text: &str, options: &TtsOptions) -> Result<AudioOutput> {
-        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), self.endpoint_path);
+        let endpoint = format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            self.endpoint_path
+        );
         let mut body = serde_json::json!({
             "model": self.model,
             "input": text,

@@ -7,5 +7,5 @@
 pub mod capabilities;
 pub mod manifest;
 
-pub use capabilities::{Capability, CapabilitiesV2, FeatureFlags};
+pub use capabilities::{CapabilitiesV2, Capability, FeatureFlags};
 pub use manifest::ManifestV2;

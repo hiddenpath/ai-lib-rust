@@ -103,7 +103,9 @@ impl CapabilitiesV2 {
     /// Get all capabilities (required + optional) as a unified set.
     pub fn all_capabilities(&self) -> Vec<Capability> {
         match self {
-            Self::Structured { required, optional, .. } => {
+            Self::Structured {
+                required, optional, ..
+            } => {
                 let mut all = required.clone();
                 all.extend(optional.iter().cloned());
                 all
@@ -197,12 +199,24 @@ pub struct LegacyCapabilities {
 impl LegacyCapabilities {
     fn to_capabilities(&self) -> Vec<Capability> {
         let mut caps = vec![Capability::Text];
-        if self.streaming { caps.push(Capability::Streaming); }
-        if self.tools { caps.push(Capability::Tools); }
-        if self.vision { caps.push(Capability::Vision); }
-        if self.agentic { caps.push(Capability::Agentic); }
-        if self.reasoning { caps.push(Capability::Reasoning); }
-        if self.parallel_tools { caps.push(Capability::ParallelTools); }
+        if self.streaming {
+            caps.push(Capability::Streaming);
+        }
+        if self.tools {
+            caps.push(Capability::Tools);
+        }
+        if self.vision {
+            caps.push(Capability::Vision);
+        }
+        if self.agentic {
+            caps.push(Capability::Agentic);
+        }
+        if self.reasoning {
+            caps.push(Capability::Reasoning);
+        }
+        if self.parallel_tools {
+            caps.push(Capability::ParallelTools);
+        }
         caps
     }
 }
@@ -267,7 +281,9 @@ mod tests {
         let v1 = CapabilitiesV2::Legacy(legacy);
         let v2 = v1.promote_to_v2();
         match &v2 {
-            CapabilitiesV2::Structured { required, optional, .. } => {
+            CapabilitiesV2::Structured {
+                required, optional, ..
+            } => {
                 assert!(required.contains(&Capability::Text));
                 assert!(required.contains(&Capability::Streaming));
                 assert!(optional.contains(&Capability::Tools));

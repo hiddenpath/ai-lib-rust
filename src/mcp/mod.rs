@@ -179,11 +179,7 @@ impl McpToolBridge {
     }
 
     /// Convert an MCP tool result to an AI-Protocol `ToolResult`.
-    pub fn mcp_result_to_protocol(
-        &self,
-        tool_call_id: &str,
-        result: &McpToolResult,
-    ) -> ToolResult {
+    pub fn mcp_result_to_protocol(&self, tool_call_id: &str, result: &McpToolResult) -> ToolResult {
         let content = result
             .content
             .iter()
@@ -220,9 +216,7 @@ impl McpToolBridge {
 
     /// Strip the server namespace prefix from a namespaced tool name.
     fn strip_namespace(&self, namespaced: &str) -> Option<String> {
-        namespaced
-            .strip_prefix(&self.namespace)
-            .map(String::from)
+        namespaced.strip_prefix(&self.namespace).map(String::from)
     }
 }
 
@@ -312,17 +306,18 @@ mod tests {
 
     #[test]
     fn test_tool_filtering_allow() {
-        let bridge = McpToolBridge::new("srv")
-            .with_allow_filter(vec!["read_file".into(), "search".into()]);
+        let bridge =
+            McpToolBridge::new("srv").with_allow_filter(vec!["read_file".into(), "search".into()]);
         let tools = bridge.mcp_tools_to_protocol(&sample_mcp_tools());
         assert_eq!(tools.len(), 2);
-        assert!(tools.iter().all(|t| !t.function.name.contains("exec_dangerous")));
+        assert!(tools
+            .iter()
+            .all(|t| !t.function.name.contains("exec_dangerous")));
     }
 
     #[test]
     fn test_tool_filtering_deny() {
-        let bridge = McpToolBridge::new("srv")
-            .with_deny_filter(vec!["exec_dangerous".into()]);
+        let bridge = McpToolBridge::new("srv").with_deny_filter(vec!["exec_dangerous".into()]);
         let tools = bridge.mcp_tools_to_protocol(&sample_mcp_tools());
         assert_eq!(tools.len(), 2);
     }
@@ -380,7 +375,10 @@ mod tests {
         };
         let proto = bridge.mcp_result_to_protocol("call_1", &result);
         assert!(proto.is_error);
-        assert!(proto.content["error"].as_str().unwrap().contains("file not found"));
+        assert!(proto.content["error"]
+            .as_str()
+            .unwrap()
+            .contains("file not found"));
     }
 
     #[test]
@@ -397,8 +395,14 @@ mod tests {
                 approval_modes: vec![],
                 provider_mapping: Some(HashMap::from([
                     ("tool_type".into(), Value::String("mcp".into())),
-                    ("beta_header".into(), Value::String("mcp-client-2025-11-20".into())),
-                    ("config_method".into(), Value::String("tool_parameter".into())),
+                    (
+                        "beta_header".into(),
+                        Value::String("mcp-client-2025-11-20".into()),
+                    ),
+                    (
+                        "config_method".into(),
+                        Value::String("tool_parameter".into()),
+                    ),
                 ])),
             }),
             server: None,

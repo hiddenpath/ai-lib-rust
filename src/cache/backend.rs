@@ -38,6 +38,9 @@ pub trait CacheBackend: Send + Sync {
     async fn exists(&self, key: &CacheKey) -> Result<bool>;
     async fn clear(&self) -> Result<()>;
     async fn len(&self) -> Result<usize>;
+    async fn is_empty(&self) -> Result<bool> {
+        Ok(self.len().await? == 0)
+    }
     fn name(&self) -> &'static str;
 }
 

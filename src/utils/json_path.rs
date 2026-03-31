@@ -415,7 +415,7 @@ impl JsonPathEvaluator {
                         // Match zero or more characters
                         if let Some(next_p) = pattern_chars.next() {
                             // Find next character in pattern
-                            while let Some(t) = text_chars.next() {
+                            for t in text_chars.by_ref() {
                                 if t == next_p {
                                     break;
                                 }

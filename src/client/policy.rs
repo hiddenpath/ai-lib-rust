@@ -2,10 +2,11 @@ use crate::{Error, Result};
 use std::time::Duration;
 
 use crate::client::signals::SignalsSnapshot;
+use crate::error_code::StandardErrorCode;
 
 /// Internal decision for how to proceed after a failed attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Decision {
+pub enum Decision {
     Retry { delay: Duration },
     Fallback,
     Fail,
@@ -16,7 +17,7 @@ pub(crate) enum Decision {
 /// Important constraints:
 /// - Keep this internal (no public API commitments yet).
 /// - Prefer deterministic, explainable behavior over clever heuristics.
-pub(crate) struct PolicyEngine {
+pub struct PolicyEngine {
     manifest: crate::protocol::ProtocolManifest,
     pub max_retries: u32,
     pub min_delay_ms: u32,
@@ -45,15 +46,18 @@ impl PolicyEngine {
         let manifest = &self.manifest;
 
         // Check for Tooling support
-        if !request.tools.as_ref().map(|t: &Vec<crate::types::tool::ToolDefinition>| t.is_empty()).unwrap_or(true) {
-            if !manifest.supports_capability("tools") {
-                return Err(Error::validation_with_context(
-                    "Model does not support tool calling",
-                    crate::ErrorContext::new()
-                        .with_field_path("request.tools")
-                        .with_source("capability_validator"),
-                ));
-            }
+        if request
+            .tools
+            .as_ref()
+            .is_some_and(|tools| !tools.is_empty())
+            && !manifest.supports_capability("tools")
+        {
+            return Err(Error::validation_with_context(
+                "Model does not support tool calling",
+                crate::ErrorContext::new()
+                    .with_field_path("request.tools")
+                    .with_source("capability_validator"),
+            ));
         }
 
         // Check for Streaming support
@@ -82,6 +86,31 @@ impl PolicyEngine {
                     crate::ErrorContext::new()
                         .with_field_path("request.messages")
                         .with_source("capability_validator"),
+                ));
+            }
+        }
+
+        if request.response_format.is_some() && !manifest.supports_capability("structured_output") {
+            return Err(Error::validation_with_context(
+                "Model does not support structured output (JSON mode / response_format)",
+                crate::ErrorContext::new()
+                    .with_field_path("request.response_format")
+                    .with_source("capability_validator")
+                    .with_standard_code(StandardErrorCode::InvalidRequest),
+            ));
+        }
+
+        if let Some(tools) = request.tools.as_ref() {
+            let needs_mcp = tools.iter().any(|t| {
+                t.tool_type.eq_ignore_ascii_case("mcp") || t.function.name.starts_with("mcp__")
+            });
+            if needs_mcp && !manifest.supports_capability("mcp_client") {
+                return Err(Error::validation_with_context(
+                    "Model does not declare mcp_client; MCP tool bridge is not allowed",
+                    crate::ErrorContext::new()
+                        .with_field_path("request.tools")
+                        .with_source("capability_validator")
+                        .with_standard_code(StandardErrorCode::RequestTooLarge),
                 ));
             }
         }

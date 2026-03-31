@@ -228,8 +228,14 @@ fn cmd_info(args: &[String]) {
     let dir = resolve_protocol_dir(&args[1..]);
 
     // Try V2 first, then V1
-    let v2_path = dir.join("v2").join("providers").join(format!("{provider}.yaml"));
-    let v1_path = dir.join("v1").join("providers").join(format!("{provider}.yaml"));
+    let v2_path = dir
+        .join("v2")
+        .join("providers")
+        .join(format!("{provider}.yaml"));
+    let v1_path = dir
+        .join("v1")
+        .join("providers")
+        .join(format!("{provider}.yaml"));
 
     let (path, version) = if v2_path.exists() {
         (v2_path, "V2")
@@ -285,7 +291,10 @@ fn cmd_info(args: &[String]) {
         if let Some(mcp) = obj.get("mcp") {
             println!("\n  MCP:");
             if let Some(client) = mcp.get("client") {
-                let supported = client.get("supported").and_then(|v| v.as_bool()).unwrap_or(false);
+                let supported = client
+                    .get("supported")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 println!("    Client supported: {supported}");
                 if supported {
                     if let Some(transports) = client.get("transports").and_then(|v| v.as_array()) {
@@ -299,7 +308,10 @@ fn cmd_info(args: &[String]) {
         // Computer Use
         if let Some(cu) = obj.get("computer_use") {
             println!("\n  Computer Use:");
-            let supported = cu.get("supported").and_then(|v| v.as_bool()).unwrap_or(false);
+            let supported = cu
+                .get("supported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             println!("    Supported: {supported}");
             if supported {
                 if let Some(impl_style) = cu.get("implementation").and_then(|v| v.as_str()) {
@@ -317,7 +329,11 @@ fn cmd_info(args: &[String]) {
             if let Some(input) = mm.get("input") {
                 let mut modalities = Vec::new();
                 for (name, cfg) in input.as_object().into_iter().flatten() {
-                    if cfg.get("supported").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if cfg
+                        .get("supported")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         modalities.push(name.as_str());
                     }
                 }
@@ -331,7 +347,11 @@ fn cmd_info(args: &[String]) {
                     if name == "text" {
                         continue;
                     }
-                    if cfg.get("supported").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if cfg
+                        .get("supported")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         modalities.push(name.as_str());
                     }
                 }
@@ -360,7 +380,11 @@ fn cmd_list(args: &[String]) {
                 let path = entry.path();
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 if ext == "yaml" || ext == "yml" {
-                    let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                    let name = path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     providers.entry(name).or_default().push(version.to_string());
                 }
             }
@@ -375,7 +399,7 @@ fn cmd_list(args: &[String]) {
     let mut sorted: Vec<_> = providers.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
 
-    println!("{:<20} {}", "Provider", "Versions");
+    println!("{:<20} Versions", "Provider");
     println!("{}", "-".repeat(40));
     for (name, versions) in &sorted {
         println!("{:<20} {}", name, versions.join(", "));
@@ -438,8 +462,16 @@ fn cmd_check_compat(args: &[String]) {
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
-        let feature_gated = ["mcp_client", "mcp_server", "computer_use", "vision",
-                             "audio", "video", "reasoning", "image_generation"];
+        let feature_gated = [
+            "mcp_client",
+            "mcp_server",
+            "computer_use",
+            "vision",
+            "audio",
+            "video",
+            "reasoning",
+            "image_generation",
+        ];
 
         println!("  Feature Requirements:");
         for cap in &required {
@@ -457,20 +489,30 @@ fn cmd_check_compat(args: &[String]) {
     // Check MCP configuration
     if let Some(mcp) = obj.get("mcp") {
         if let Some(client) = mcp.get("client") {
-            if client.get("supported").and_then(|v| v.as_bool()).unwrap_or(false) {
-                if client.get("transports").and_then(|v| v.as_array()).map(|a| a.is_empty()).unwrap_or(true) {
-                    warnings.push("MCP client enabled but no transports specified".into());
-                }
+            if client
+                .get("supported")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+                && client
+                    .get("transports")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.is_empty())
+                    .unwrap_or(true)
+            {
+                warnings.push("MCP client enabled but no transports specified".into());
             }
         }
     }
 
     // Check Computer Use safety
     if let Some(cu) = obj.get("computer_use") {
-        if cu.get("supported").and_then(|v| v.as_bool()).unwrap_or(false) {
-            if cu.get("safety").is_none() {
-                warnings.push("Computer Use enabled but no safety configuration".into());
-            }
+        if cu
+            .get("supported")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            && cu.get("safety").is_none()
+        {
+            warnings.push("Computer Use enabled but no safety configuration".into());
         }
     }
 

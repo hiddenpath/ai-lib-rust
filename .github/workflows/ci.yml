@@ -8,30 +8,73 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Test
+  quality:
+    name: Quality Gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout ai-protocol
+        uses: actions/checkout@v4
+        with:
+          repository: ailib-official/ai-protocol
+          path: ai-protocol
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run tests
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run library and integration tests
+        env:
+          AI_PROTOCOL_DIR: ${{ github.workspace }}/ai-protocol
+          COMPLIANCE_DIR: ${{ github.workspace }}/ai-protocol/tests/compliance
         run: cargo test --workspace --lib --tests
 
-  # Enable when ai-protocol-mock repo exists: if: github.repository != 'hiddenpath/ai-protocol-mock'
+      - name: Run doctests
+        env:
+          AI_PROTOCOL_DIR: ${{ github.workspace }}/ai-protocol
+          COMPLIANCE_DIR: ${{ github.workspace }}/ai-protocol/tests/compliance
+        run: cargo test --doc
+
+  all-features:
+    name: All Features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout ai-protocol
+        uses: actions/checkout@v4
+        with:
+          repository: ailib-official/ai-protocol
+          path: ai-protocol
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run all-features tests
+        env:
+          AI_PROTOCOL_DIR: ${{ github.workspace }}/ai-protocol
+          COMPLIANCE_DIR: ${{ github.workspace }}/ai-protocol/tests/compliance
+        run: cargo test --all-features --tests
+
   test-with-mock:
     name: Test with ai-protocol-mock
     runs-on: ubuntu-latest
-    continue-on-error: true  # Don't block CI if ai-protocol-mock repo not yet created
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout ai-protocol
+        uses: actions/checkout@v4
+        with:
+          repository: ailib-official/ai-protocol
+          path: ai-protocol
 
       - name: Checkout ai-protocol-mock
         uses: actions/checkout@v4
         with:
-          repository: hiddenpath/ai-protocol-mock
+          repository: ailib-official/ai-protocol-mock
           path: ai-protocol-mock
 
       - name: Install Rust
@@ -52,6 +95,8 @@ jobs:
 
       - name: Run tests with mock
         env:
+          AI_PROTOCOL_DIR: ${{ github.workspace }}/ai-protocol
+          COMPLIANCE_DIR: ${{ github.workspace }}/ai-protocol/tests/compliance
           MOCK_HTTP_URL: http://localhost:4010
           MOCK_MCP_URL: http://localhost:4010/mcp
         run: cargo test --workspace --lib --tests -- --ignored --nocapture

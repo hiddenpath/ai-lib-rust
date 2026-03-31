@@ -1,13 +1,12 @@
 //! Integration tests for batch API
 
-use ai_lib_rust::prelude::*;
 use crate::integration::mock_server::MockServerFixture;
 
 #[tokio::test]
 async fn test_batch_execution_order_preserving() {
     // Test that batch results maintain input order
-    let fixture = MockServerFixture::new().await;
-    
+    let _fixture = MockServerFixture::new().await;
+
     // Mock multiple successful responses
     // Verify results are in the same order as input
 }

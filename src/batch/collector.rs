@@ -130,8 +130,20 @@ impl<T: Clone> BatchCollector<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BatchAddResult { Added { count: usize }, ShouldFlush { count: usize } }
-impl BatchAddResult { pub fn should_flush(&self) -> bool { matches!(self, BatchAddResult::ShouldFlush { .. }) } pub fn count(&self) -> usize { match self { BatchAddResult::Added { count } | BatchAddResult::ShouldFlush { count } => *count } } }
+pub enum BatchAddResult {
+    Added { count: usize },
+    ShouldFlush { count: usize },
+}
+impl BatchAddResult {
+    pub fn should_flush(&self) -> bool {
+        matches!(self, BatchAddResult::ShouldFlush { .. })
+    }
+    pub fn count(&self) -> usize {
+        match self {
+            BatchAddResult::Added { count } | BatchAddResult::ShouldFlush { count } => *count,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -177,7 +189,7 @@ mod tests {
     fn test_batch_collector_add_data() {
         let config = BatchConfig::new().with_max_batch_size(5);
         let collector: BatchCollector<String> = BatchCollector::new(config);
-        
+
         let result = collector.add_data("item1".to_string());
         assert_eq!(result, BatchAddResult::Added { count: 1 });
         assert_eq!(collector.len(), 1);
@@ -188,7 +200,7 @@ mod tests {
     fn test_batch_collector_add_item() {
         let config = BatchConfig::new().with_max_batch_size(5);
         let collector: BatchCollector<String> = BatchCollector::new(config);
-        
+
         let item = BatchItem::new("item1".to_string()).with_priority(5);
         let result = collector.add(item);
         assert_eq!(result.count(), 1);
@@ -196,13 +208,15 @@ mod tests {
 
     #[test]
     fn test_batch_collector_auto_flush() {
-        let config = BatchConfig::new().with_max_batch_size(3).with_auto_flush(true);
+        let config = BatchConfig::new()
+            .with_max_batch_size(3)
+            .with_auto_flush(true);
         let collector: BatchCollector<i32> = BatchCollector::new(config);
-        
+
         // Add items below threshold
         assert!(!collector.add_data(1).should_flush());
         assert!(!collector.add_data(2).should_flush());
-        
+
         // Third item should trigger flush
         let result = collector.add_data(3);
         assert!(result.should_flush());
@@ -211,13 +225,15 @@ mod tests {
 
     #[test]
     fn test_batch_collector_no_auto_flush() {
-        let config = BatchConfig::new().with_max_batch_size(3).with_auto_flush(false);
+        let config = BatchConfig::new()
+            .with_max_batch_size(3)
+            .with_auto_flush(false);
         let collector: BatchCollector<i32> = BatchCollector::new(config);
-        
+
         collector.add_data(1);
         collector.add_data(2);
         let result = collector.add_data(3);
-        
+
         // Should not report ShouldFlush when auto_flush is disabled
         assert!(!result.should_flush());
         // But should_flush() method checks size
@@ -228,17 +244,17 @@ mod tests {
     fn test_batch_collector_drain() {
         let config = BatchConfig::new().with_max_batch_size(10);
         let collector: BatchCollector<String> = BatchCollector::new(config);
-        
+
         collector.add_data("a".to_string());
         collector.add_data("b".to_string());
         collector.add_data("c".to_string());
-        
+
         let items = collector.drain();
         assert_eq!(items.len(), 3);
         assert_eq!(items[0].data, "a");
         assert_eq!(items[1].data, "b");
         assert_eq!(items[2].data, "c");
-        
+
         // Collector should be empty after drain
         assert!(collector.is_empty());
     }
@@ -247,11 +263,11 @@ mod tests {
     fn test_batch_collector_clear() {
         let config = BatchConfig::new().with_max_batch_size(10);
         let collector: BatchCollector<i32> = BatchCollector::new(config);
-        
+
         collector.add_data(1);
         collector.add_data(2);
         assert_eq!(collector.len(), 2);
-        
+
         collector.clear();
         assert!(collector.is_empty());
     }
@@ -260,10 +276,10 @@ mod tests {
     fn test_batch_add_result_methods() {
         let added = BatchAddResult::Added { count: 5 };
         let should_flush = BatchAddResult::ShouldFlush { count: 10 };
-        
+
         assert!(!added.should_flush());
         assert_eq!(added.count(), 5);
-        
+
         assert!(should_flush.should_flush());
         assert_eq!(should_flush.count(), 10);
     }
@@ -272,10 +288,10 @@ mod tests {
     fn test_batch_collector_thread_safe() {
         use std::sync::Arc;
         use std::thread;
-        
+
         let config = BatchConfig::new().with_max_batch_size(100);
         let collector: Arc<BatchCollector<i32>> = Arc::new(BatchCollector::new(config));
-        
+
         let mut handles = vec![];
         for i in 0..10 {
             let c = Arc::clone(&collector);
@@ -285,11 +301,11 @@ mod tests {
                 }
             }));
         }
-        
+
         for h in handles {
             h.join().unwrap();
         }
-        
+
         assert_eq!(collector.len(), 100);
     }
 }

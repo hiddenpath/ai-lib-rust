@@ -58,10 +58,7 @@ pub enum ComputerAction {
     /// Click a DOM element by selector (tool_based mode).
     BrowserClickElement { selector: String },
     /// Fill a form field (tool_based mode).
-    BrowserFillForm {
-        selector: String,
-        value: String,
-    },
+    BrowserFillForm { selector: String, value: String },
     /// Zoom into a screen region for detailed inspection (Anthropic-specific).
     ZoomRegion {
         x: f64,
@@ -155,7 +152,10 @@ impl SafetyPolicy {
     pub fn from_config(config: &ComputerUseConfig) -> Self {
         let mut policy = Self::default();
         if let Some(safety) = &config.safety {
-            if let Some(v) = safety.get("confirmation_required").and_then(|v| v.as_bool()) {
+            if let Some(v) = safety
+                .get("confirmation_required")
+                .and_then(|v| v.as_bool())
+            {
                 policy.confirmation_required = v;
             }
             if let Some(s) = safety.get("sandbox_mode").and_then(|v| v.as_str()) {
@@ -168,7 +168,10 @@ impl SafetyPolicy {
             if let Some(v) = safety.get("action_logging").and_then(|v| v.as_bool()) {
                 policy.action_logging = v;
             }
-            if let Some(v) = safety.get("sensitive_data_protection").and_then(|v| v.as_bool()) {
+            if let Some(v) = safety
+                .get("sensitive_data_protection")
+                .and_then(|v| v.as_bool())
+            {
                 policy.sensitive_data_protection = v;
             }
             if let Some(v) = safety.get("max_actions_per_turn").and_then(|v| v.as_u64()) {
@@ -213,9 +216,7 @@ impl SafetyPolicy {
             match action {
                 ComputerAction::FileRead { path } | ComputerAction::FileWrite { path, .. } => {
                     if is_sensitive_path(path) {
-                        return Err(SafetyViolation::SensitiveDataAccess {
-                            path: path.clone(),
-                        });
+                        return Err(SafetyViolation::SensitiveDataAccess { path: path.clone() });
                     }
                 }
                 _ => {}
@@ -246,7 +247,10 @@ impl std::fmt::Display for SafetyViolation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MaxActionsExceeded { limit, attempted } => {
-                write!(f, "Max actions per turn exceeded: limit={limit}, attempted={attempted}")
+                write!(
+                    f,
+                    "Max actions per turn exceeded: limit={limit}, attempted={attempted}"
+                )
             }
             Self::DomainNotAllowed { domain, .. } => {
                 write!(f, "Domain '{domain}' is not in the allowlist")
@@ -332,8 +336,15 @@ fn extract_domain(url: &str) -> String {
 
 fn is_sensitive_path(path: &str) -> bool {
     let sensitive_patterns = [
-        ".ssh", ".gnupg", ".aws", "credentials", "secrets",
-        ".env", "password", "token", ".kube/config",
+        ".ssh",
+        ".gnupg",
+        ".aws",
+        "credentials",
+        "secrets",
+        ".env",
+        "password",
+        "token",
+        ".kube/config",
     ];
     let lower = path.to_lowercase();
     sensitive_patterns.iter().any(|p| lower.contains(p))
@@ -357,7 +368,9 @@ mod tests {
             max_actions_per_turn: 5,
             ..Default::default()
         };
-        let action = ComputerAction::Screenshot { format: "png".into() };
+        let action = ComputerAction::Screenshot {
+            format: "png".into(),
+        };
         assert!(policy.validate_action(&action, 4).is_ok());
         assert!(policy.validate_action(&action, 5).is_err());
     }
@@ -397,7 +410,10 @@ mod tests {
     fn test_extract_domain() {
         assert_eq!(extract_domain("https://example.com/page"), "example.com");
         assert_eq!(extract_domain("http://localhost:8080/api"), "localhost");
-        assert_eq!(extract_domain("https://sub.domain.co.uk/path"), "sub.domain.co.uk");
+        assert_eq!(
+            extract_domain("https://sub.domain.co.uk/path"),
+            "sub.domain.co.uk"
+        );
     }
 
     #[test]
@@ -410,8 +426,14 @@ mod tests {
             safety: None,
             environment: None,
             provider_mapping: Some(std::collections::HashMap::from([
-                ("tool_type".into(), serde_json::Value::String("computer_20251124".into())),
-                ("beta_header".into(), serde_json::Value::String("computer-use-2025-11-24".into())),
+                (
+                    "tool_type".into(),
+                    serde_json::Value::String("computer_20251124".into()),
+                ),
+                (
+                    "beta_header".into(),
+                    serde_json::Value::String("computer-use-2025-11-24".into()),
+                ),
             ])),
         };
         let prov = extract_provider_config(&config).unwrap();

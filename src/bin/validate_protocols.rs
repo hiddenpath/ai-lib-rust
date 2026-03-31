@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // For now, we just check if it's valid YAML and can be parsed
             match std::fs::read_to_string(entry.path()) {
                 Ok(content) => {
-                    let is_json = entry.path().extension().map_or(false, |e| e == "json");
+                    let is_json = entry.path().extension().is_some_and(|e| e == "json");
                     let result = if is_json {
                         serde_json::from_str::<serde_json::Value>(&content)
                             .map_err(|e| e.to_string())

@@ -117,22 +117,34 @@ impl PiiDetector {
         let mut result = content.to_string();
 
         // Replace emails
-        result = self.email_pattern.replace_all(&result, replacement).to_string();
+        result = self
+            .email_pattern
+            .replace_all(&result, replacement)
+            .to_string();
 
         // Replace phone numbers (only longer matches)
-        result = self.phone_pattern.replace_all(&result, |caps: &regex::Captures| {
-            if caps[0].len() >= 10 {
-                replacement.to_string()
-            } else {
-                caps[0].to_string()
-            }
-        }).to_string();
+        result = self
+            .phone_pattern
+            .replace_all(&result, |caps: &regex::Captures| {
+                if caps[0].len() >= 10 {
+                    replacement.to_string()
+                } else {
+                    caps[0].to_string()
+                }
+            })
+            .to_string();
 
         // Replace credit cards
-        result = self.credit_card_pattern.replace_all(&result, replacement).to_string();
+        result = self
+            .credit_card_pattern
+            .replace_all(&result, replacement)
+            .to_string();
 
         // Replace SSN
-        result = self.ssn_pattern.replace_all(&result, replacement).to_string();
+        result = self
+            .ssn_pattern
+            .replace_all(&result, replacement)
+            .to_string();
 
         result
     }
@@ -171,7 +183,7 @@ impl PiiDetector {
     fn mask_credit_card(number: &str) -> String {
         let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
         if digits.len() >= 4 {
-            format!("****-****-****-{}", &digits[digits.len()-4..])
+            format!("****-****-****-{}", &digits[digits.len() - 4..])
         } else {
             "****".to_string()
         }

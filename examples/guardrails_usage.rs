@@ -13,9 +13,7 @@
 //! Usage:
 //!   cargo run --example guardrails_usage
 
-use ai_lib_rust::guardrails::{
-    FilterAction, FilterRule, Guardrails, GuardrailsConfig,
-};
+use ai_lib_rust::guardrails::{FilterAction, FilterRule, Guardrails, GuardrailsConfig};
 use ai_lib_rust::Message;
 
 fn main() {

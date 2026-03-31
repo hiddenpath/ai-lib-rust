@@ -28,7 +28,10 @@ async fn test_invalid_yaml_structure() {
     std::env::set_var("AI_PROTOCOL_DIR", &protocol_dir);
 
     // Create a temporary invalid manifest file
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ai-lib-rust-invalid-provider-{}",
+        std::process::id()
+    ));
     let providers_dir = temp_dir.join("v1").join("providers");
     std::fs::create_dir_all(&providers_dir).unwrap();
     let temp_file = providers_dir.join("invalid_provider.yaml");
@@ -49,6 +52,7 @@ id: test-provider
 
     // Cleanup
     let _ = std::fs::remove_file(&temp_file);
+    let _ = std::fs::remove_dir_all(&temp_dir);
 
     // Should fail validation
     assert!(result.is_err(), "Invalid manifest should fail validation");
@@ -61,7 +65,10 @@ id: test-provider
 
 #[tokio::test]
 async fn test_missing_required_fields() {
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "ai-lib-rust-incomplete-provider-{}",
+        std::process::id()
+    ));
     let providers_dir = temp_dir.join("v1").join("providers");
     std::fs::create_dir_all(&providers_dir).unwrap();
     let temp_file = providers_dir.join("incomplete_provider.yaml");
@@ -82,6 +89,7 @@ protocol_version: "1.1"
 
     // Cleanup
     let _ = std::fs::remove_file(&temp_file);
+    let _ = std::fs::remove_dir_all(&temp_dir);
 
     assert!(result.is_err(), "Manifest with missing fields should fail");
 }

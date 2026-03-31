@@ -1,5 +1,4 @@
-use ai_lib_rust::client::AiClient;
-use ai_lib_rust::protocol::UnifiedRequest;
+use ai_lib_rust::client::{AiClient, AiClientBuilder};
 use ai_lib_rust::types::message::Message;
 use ai_lib_rust::types::tool::{FunctionDefinition, ToolDefinition};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -9,8 +8,11 @@ async fn test_rate_limiter_header_extraction() {
     // Ensuring protocol directory is correctly set for manifest loading
     std::env::set_var("AI_PROTOCOL_PATH", "../../ai-protocol");
 
-    // 1. Setup client with a real manifest (deepseek as it has simple headers)
-    let client = AiClient::new("deepseek/deepseek-chat")
+    // 1. Setup client with a manifest that defines `rate_limit_headers` (OpenAI-style);
+    // force a rate limiter so header-driven wait is observable.
+    let client = AiClientBuilder::new()
+        .rate_limit_rps(10.0)
+        .build("openai/gpt-4o-mini")
         .await
         .expect("Failed to create client");
 
@@ -47,8 +49,6 @@ async fn test_policy_engine_validation() {
         .expect("Failed to create client");
 
     // Case 1: Request tools with a model that supports them
-    let mut req = UnifiedRequest::default();
-    req.operation = "chat".to_string();
     let tools = vec![ToolDefinition {
         tool_type: "function".to_string(),
         function: FunctionDefinition {

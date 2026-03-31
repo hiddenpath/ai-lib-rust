@@ -150,12 +150,7 @@ fn bench_frame_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("frame_throughput");
 
     // Simulate processing many frames (realistic streaming scenario)
-    let repeated_frames: Vec<&str> = SSE_FRAMES
-        .iter()
-        .cycle()
-        .take(100)
-        .copied()
-        .collect();
+    let repeated_frames: Vec<&str> = SSE_FRAMES.iter().cycle().take(100).copied().collect();
 
     group.throughput(Throughput::Elements(repeated_frames.len() as u64));
 

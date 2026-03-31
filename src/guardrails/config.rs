@@ -141,7 +141,7 @@ impl GuardrailsConfig {
         config.check_pii_input = true;
         config.check_pii_output = true;
         config.stop_on_first_block = true;
-        
+
         // Add common sensitive keyword patterns
         config.keyword_rules = vec![
             FilterRule::keyword("password", FilterAction::Warn)
@@ -199,7 +199,8 @@ impl GuardrailsConfigBuilder {
     /// Add a keyword filter rule
     pub fn add_keyword_filter(mut self, keyword: impl Into<String>, action: FilterAction) -> Self {
         self.filter_input = true; // Auto-enable input filtering
-        self.keyword_rules.push(FilterRule::keyword(keyword, action));
+        self.keyword_rules
+            .push(FilterRule::keyword(keyword, action));
         self
     }
 
@@ -257,7 +258,9 @@ impl GuardrailsConfigBuilder {
             enable_pii_detection: self.enable_pii_detection,
             check_pii_input: self.check_pii_input,
             check_pii_output: self.check_pii_output,
-            sanitize_replacement: self.sanitize_replacement.unwrap_or_else(|| "[FILTERED]".to_string()),
+            sanitize_replacement: self
+                .sanitize_replacement
+                .unwrap_or_else(|| "[FILTERED]".to_string()),
             pii_replacement: self.pii_replacement.unwrap_or_else(|| "[PII]".to_string()),
             stop_on_first_block: self.stop_on_first_block,
         }

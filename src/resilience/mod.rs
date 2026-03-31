@@ -47,17 +47,20 @@
 //!
 //! The rate limiter controls request throughput using the token bucket algorithm:
 //!
-//! ```rust
+//! ```rust,no_run
 //! use ai_lib_rust::resilience::rate_limiter::{RateLimiter, RateLimiterConfig};
 //!
-//! let config = RateLimiterConfig::new()
-//!     .with_max_tokens(100)
-//!     .with_refill_rate(10.0); // 10 tokens per second
-//! let limiter = RateLimiter::new(config);
+//! #[tokio::main]
+//! async fn main() {
+//!     let config = RateLimiterConfig::new()
+//!         .with_max_tokens(100)
+//!         .with_refill_rate(10.0); // 10 tokens per second
+//!     let limiter = RateLimiter::new(config);
 //!
-//! // Try to acquire a permit
-//! if limiter.try_acquire(1) {
-//!     // Proceed with request...
+//!     // Try to acquire a permit
+//!     if limiter.try_acquire().await {
+//!         // Proceed with request...
+//!     }
 //! }
 //! ```
 

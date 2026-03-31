@@ -22,13 +22,15 @@ async fn main() -> ai_lib_rust::Result<()> {
     let client = AiClient::new("openai/gpt-4o").await?;
 
     // 2. Use routing_mvp for selection (pure heuristics)
-    let mut mgr = CustomModelManager::new("openai")
-        .with_strategy(ModelSelectionStrategy::CostBased);
+    let mut mgr =
+        CustomModelManager::new("openai").with_strategy(ModelSelectionStrategy::CostBased);
     mgr.add_model(ModelInfo {
         name: "gpt-4o-mini".to_string(),
         display_name: "GPT-4o Mini".to_string(),
         description: "Fast and cheap".to_string(),
-        capabilities: ModelCapabilities::new().with_chat().with_context_window(128000),
+        capabilities: ModelCapabilities::new()
+            .with_chat()
+            .with_context_window(128000),
         pricing: PricingInfo::new(0.15, 0.60),
         performance: PerformanceMetrics::new()
             .with_speed(SpeedTier::Fast)
@@ -40,7 +42,9 @@ async fn main() -> ai_lib_rust::Result<()> {
         name: "gpt-4o".to_string(),
         display_name: "GPT-4o".to_string(),
         description: "Higher quality".to_string(),
-        capabilities: ModelCapabilities::new().with_chat().with_context_window(128000),
+        capabilities: ModelCapabilities::new()
+            .with_chat()
+            .with_context_window(128000),
         pricing: PricingInfo::new(2.50, 10.00),
         performance: PerformanceMetrics::new()
             .with_speed(SpeedTier::Balanced)

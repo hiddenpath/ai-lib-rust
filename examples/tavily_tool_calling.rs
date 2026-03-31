@@ -23,8 +23,8 @@
 //!   # Or use OpenAI
 //!   $env:OPENAI_API_KEY="your_key"; cargo run --example tavily_tool_calling -- --provider openai
 
-use ai_lib_rust::types::tool::{FunctionDefinition, ToolCall, ToolDefinition, ToolResult};
 use ai_lib_rust::types::message::{ContentBlock, MessageContent, MessageRole};
+use ai_lib_rust::types::tool::{FunctionDefinition, ToolCall, ToolDefinition, ToolResult};
 use ai_lib_rust::{AiClient, Message};
 use serde_json::{json, Value};
 use std::env;
@@ -112,7 +112,10 @@ async fn process_tool_calls(
     for tool_call in tool_calls {
         println!("\n📌 Tool Call: {}", tool_call.name);
         println!("   ID: {}", tool_call.id);
-        println!("   Arguments: {}", serde_json::to_string_pretty(&tool_call.arguments)?);
+        println!(
+            "   Arguments: {}",
+            serde_json::to_string_pretty(&tool_call.arguments)?
+        );
 
         let result = if tool_call.name == "tavily_search" {
             let query = tool_call

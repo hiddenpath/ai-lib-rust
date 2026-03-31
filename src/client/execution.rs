@@ -66,12 +66,12 @@ impl AiClient {
     }
 
     fn is_transient_server_status(status: u16) -> bool {
-        status >= 500 && status <= 599
+        (500..=599).contains(&status)
     }
     /// Start a streaming request and return the event stream.
     ///
     /// This is a single attempt (no retry/fallback). Higher-level policy loops live in the caller.
-    pub(crate) async fn execute_stream_once<'a>(
+    pub(crate) async fn execute_stream_once(
         &self,
         request: &crate::protocol::UnifiedRequest,
     ) -> Result<(
@@ -107,7 +107,9 @@ impl AiClient {
                 .error_classification
                 .as_ref()
                 .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
+                .and_then(|m: &std::collections::HashMap<String, String>| {
+                    m.get(&status.to_string()).cloned()
+                })
                 .unwrap_or_else(|| "http_error".to_string());
 
             // Protocol-driven fallback decision: use standard error_classes guidance
@@ -121,7 +123,8 @@ impl AiClient {
             // Extract provider error code once and reuse
             let provider_code = self.error_code_from_body(&body);
             if !should_fallback {
-                should_fallback = Self::is_model_routing_error(status, provider_code.as_deref(), &body);
+                should_fallback =
+                    Self::is_model_routing_error(status, provider_code.as_deref(), &body);
             }
 
             let retry_policy = self.manifest.retry_policy.as_ref();
@@ -257,7 +260,9 @@ impl AiClient {
                     .error_classification
                     .as_ref()
                     .and_then(|ec| ec.by_http_status.as_ref())
-                    .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
+                    .and_then(|m: &std::collections::HashMap<String, String>| {
+                        m.get(&status.to_string()).cloned()
+                    })
                     .unwrap_or_else(|| "http_error".to_string());
 
                 let should_fallback = is_fallbackable_error_class(class.as_str())
@@ -275,7 +280,9 @@ impl AiClient {
                 let std_code = provider_code
                     .as_deref()
                     .and_then(crate::error_code::StandardErrorCode::from_provider_code)
-                    .unwrap_or_else(|| crate::error_code::StandardErrorCode::from_http_status(status));
+                    .unwrap_or_else(|| {
+                        crate::error_code::StandardErrorCode::from_http_status(status)
+                    });
 
                 let mut context = crate::ErrorContext::new()
                     .with_status_code(status)
@@ -382,7 +389,9 @@ impl AiClient {
                 .error_classification
                 .as_ref()
                 .and_then(|ec| ec.by_http_status.as_ref())
-                .and_then(|m: &std::collections::HashMap<String, String>| m.get(&status.to_string()).cloned())
+                .and_then(|m: &std::collections::HashMap<String, String>| {
+                    m.get(&status.to_string()).cloned()
+                })
                 .unwrap_or_else(|| "http_error".to_string());
 
             // Protocol-driven fallback decision: use standard error_classes guidance
@@ -400,7 +409,8 @@ impl AiClient {
             // Extract provider error code once and reuse
             let provider_code = self.error_code_from_body(&body);
             if !should_fallback {
-                should_fallback = Self::is_model_routing_error(status, provider_code.as_deref(), &body);
+                should_fallback =
+                    Self::is_model_routing_error(status, provider_code.as_deref(), &body);
             }
             if !should_fallback && Self::is_transient_server_status(status) {
                 should_fallback = true;

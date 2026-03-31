@@ -469,11 +469,9 @@ impl ProtocolLoader {
                             return Ok(model.clone());
                         }
                     }
-                } else {
-                    if let Ok(config) = self.load_model_registry_yaml(&path).await {
-                        if let Some(model) = config.models.get(model_name) {
-                            return Ok(model.clone());
-                        }
+                } else if let Ok(config) = self.load_model_registry_yaml(&path).await {
+                    if let Some(model) = config.models.get(model_name) {
+                        return Ok(model.clone());
                     }
                 }
             }

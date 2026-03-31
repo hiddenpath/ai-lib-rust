@@ -31,13 +31,10 @@
 //! use std::time::Duration;
 //!
 //! // Create an in-memory cache with 1-hour TTL
-//! let backend = MemoryCache::new(1000); // max 1000 entries
-//! let config = CacheConfig {
-//!     ttl: Duration::from_secs(3600),
-//!     enabled: true,
-//!     ..Default::default()
-//! };
-//! let cache = CacheManager::new(Box::new(backend), config);
+//! let config = CacheConfig::new()
+//!     .with_ttl(Duration::from_secs(3600))
+//!     .with_enabled(true);
+//! let cache = CacheManager::new(config, Box::new(MemoryCache::new(1000)));
 //! ```
 //!
 //! ## Cache Key Generation

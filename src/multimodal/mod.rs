@@ -154,7 +154,9 @@ impl MultimodalCapabilities {
         if self.image_formats.is_empty() {
             return true; // No restrictions declared
         }
-        self.image_formats.iter().any(|f| f.eq_ignore_ascii_case(format))
+        self.image_formats
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case(format))
     }
 
     /// Validate an audio format against supported formats.
@@ -162,7 +164,9 @@ impl MultimodalCapabilities {
         if self.audio_formats.is_empty() {
             return true;
         }
-        self.audio_formats.iter().any(|f| f.eq_ignore_ascii_case(format))
+        self.audio_formats
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case(format))
     }
 
     /// Validate a video format against supported formats.
@@ -170,7 +174,9 @@ impl MultimodalCapabilities {
         if self.video_formats.is_empty() {
             return true;
         }
-        self.video_formats.iter().any(|f| f.eq_ignore_ascii_case(format))
+        self.video_formats
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case(format))
     }
 }
 
@@ -180,10 +186,18 @@ pub fn detect_modalities(content_blocks: &[serde_json::Value]) -> HashSet<Modali
     for block in content_blocks {
         if let Some(block_type) = block.get("type").and_then(|t| t.as_str()) {
             match block_type {
-                "text" => { modalities.insert(Modality::Text); }
-                "image" | "image_url" => { modalities.insert(Modality::Image); }
-                "audio" | "input_audio" => { modalities.insert(Modality::Audio); }
-                "video" => { modalities.insert(Modality::Video); }
+                "text" => {
+                    modalities.insert(Modality::Text);
+                }
+                "image" | "image_url" => {
+                    modalities.insert(Modality::Image);
+                }
+                "audio" | "input_audio" => {
+                    modalities.insert(Modality::Audio);
+                }
+                "video" => {
+                    modalities.insert(Modality::Video);
+                }
                 _ => {}
             }
         }
@@ -307,9 +321,7 @@ mod tests {
     #[test]
     fn test_validate_content_modalities_fail() {
         let caps = MultimodalCapabilities::from_config(&make_config());
-        let blocks = vec![
-            serde_json::json!({"type": "video", "source": {}}),
-        ];
+        let blocks = vec![serde_json::json!({"type": "video", "source": {}})];
         let err = validate_content_modalities(&blocks, &caps).unwrap_err();
         assert!(err.contains(&Modality::Video));
     }

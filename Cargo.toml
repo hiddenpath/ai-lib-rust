@@ -162,6 +162,10 @@ name = "multi_provider"
 path = "examples/multi_provider.rs"
 required-features = ["routing_mvp"]
 
+[[example]]
+name = "tavily_tool_calling"
+path = "examples/tavily_tool_calling.rs"
+
 [[bin]]
 name = "validate_protocols"
 path = "src/bin/validate_protocols.rs"

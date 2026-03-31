@@ -161,19 +161,19 @@ pub enum Error {
     #[error("Configuration error: {message}{}", format_context(.context))]
     Configuration {
         message: String,
-        context: ErrorContext,
+        context: Box<ErrorContext>,
     },
 
     #[error("Validation error: {message}{}", format_context(.context))]
     Validation {
         message: String,
-        context: ErrorContext,
+        context: Box<ErrorContext>,
     },
 
     #[error("Runtime error: {message}{}", format_context(.context))]
     Runtime {
         message: String,
-        context: ErrorContext,
+        context: Box<ErrorContext>,
     },
 
     #[error("Network transport error: {0}")]
@@ -193,13 +193,13 @@ pub enum Error {
         retryable: bool,
         fallbackable: bool,
         retry_after_ms: Option<u32>,
-        context: Option<ErrorContext>,
+        context: Option<Box<ErrorContext>>,
     },
 
     #[error("Unknown error: {message}{}", format_context(.context))]
     Unknown {
         message: String,
-        context: ErrorContext,
+        context: Box<ErrorContext>,
     },
 }
 
@@ -226,7 +226,9 @@ fn format_context(ctx: &ErrorContext) -> String {
         macro_rules! append_field {
             ($label:expr, $val:expr) => {
                 if let Some(ref v) = $val {
-                    if !first { buf.push_str(", "); }
+                    if !first {
+                        buf.push_str(", ");
+                    }
                     let _ = write!(buf, "{}: {}", $label, v);
                     first = false;
                 }
@@ -237,24 +239,34 @@ fn format_context(ctx: &ErrorContext) -> String {
         append_field!("source", ctx.source);
         append_field!("request_id", ctx.request_id);
         if let Some(code) = ctx.status_code {
-            if !first { buf.push_str(", "); }
+            if !first {
+                buf.push_str(", ");
+            }
             let _ = write!(buf, "status: {}", code);
             first = false;
         }
         append_field!("error_code", ctx.error_code);
         if let Some(r) = ctx.retryable {
-            if !first { buf.push_str(", "); }
+            if !first {
+                buf.push_str(", ");
+            }
             let _ = write!(buf, "retryable: {}", r);
             first = false;
         }
         if let Some(f) = ctx.fallbackable {
-            if !first { buf.push_str(", "); }
+            if !first {
+                buf.push_str(", ");
+            }
             let _ = write!(buf, "fallbackable: {}", f);
             #[allow(unused_assignments)]
-            { first = false; }
+            {
+                first = false;
+            }
         }
         if let Some(ref std_code) = ctx.standard_code {
-            if !first { buf.push_str(", "); }
+            if !first {
+                buf.push_str(", ");
+            }
             let _ = write!(buf, "standard_code: {}", std_code.code());
         }
         buf.push(']');
@@ -267,8 +279,8 @@ fn format_context(ctx: &ErrorContext) -> String {
     buf
 }
 
-fn format_optional_context(ctx: &Option<ErrorContext>) -> String {
-    ctx.as_ref().map(format_context).unwrap_or_default()
+fn format_optional_context(ctx: &Option<Box<ErrorContext>>) -> String {
+    ctx.as_deref().map(format_context).unwrap_or_default()
 }
 
 impl Error {
@@ -276,7 +288,7 @@ impl Error {
     pub fn runtime_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Runtime {
             message: msg.into(),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -284,7 +296,7 @@ impl Error {
     pub fn validation_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Validation {
             message: msg.into(),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -292,7 +304,7 @@ impl Error {
     pub fn configuration_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Configuration {
             message: msg.into(),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -300,7 +312,7 @@ impl Error {
     pub fn unknown_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Unknown {
             message: msg.into(),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -318,7 +330,7 @@ impl Error {
     pub fn network_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Runtime {
             message: format!("Network error: {}", msg.into()),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -326,7 +338,7 @@ impl Error {
     pub fn api_with_context(msg: impl Into<String>, context: ErrorContext) -> Self {
         Error::Runtime {
             message: format!("API error: {}", msg.into()),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -334,7 +346,7 @@ impl Error {
     pub fn parsing(msg: impl Into<String>) -> Self {
         Error::Validation {
             message: format!("Parsing error: {}", msg.into()),
-            context: ErrorContext::new().with_source("parsing"),
+            context: Box::new(ErrorContext::new().with_source("parsing")),
         }
     }
 
@@ -344,11 +356,11 @@ impl Error {
             Error::Configuration { context, .. }
             | Error::Validation { context, .. }
             | Error::Runtime { context, .. }
-            | Error::Unknown { context, .. } => Some(context),
+            | Error::Unknown { context, .. } => Some(context.as_ref()),
             Error::Remote {
                 context: Some(ref c),
                 ..
-            } => Some(c),
+            } => Some(c.as_ref()),
             _ => None,
         }
     }
@@ -359,7 +371,9 @@ impl Error {
     /// in order of precedence.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Error::Remote { retryable, context, .. } => {
+            Error::Remote {
+                retryable, context, ..
+            } => {
                 if *retryable {
                     return true;
                 }
@@ -413,18 +427,15 @@ impl Error {
                 class,
                 context,
                 ..
-            } => context
-                .as_ref()
-                .and_then(|c| c.standard_code)
-                .or_else(|| {
-                    // Derive from class name, or from HTTP status if class unknown
-                    let from_class = StandardErrorCode::from_error_class(class);
-                    if from_class == StandardErrorCode::Unknown {
-                        Some(StandardErrorCode::from_http_status(*status))
-                    } else {
-                        Some(from_class)
-                    }
-                }),
+            } => context.as_ref().and_then(|c| c.standard_code).or_else(|| {
+                // Derive from class name, or from HTTP status if class unknown
+                let from_class = StandardErrorCode::from_error_class(class);
+                if from_class == StandardErrorCode::Unknown {
+                    Some(StandardErrorCode::from_http_status(*status))
+                } else {
+                    Some(from_class)
+                }
+            }),
             Error::Configuration { context, .. }
             | Error::Validation { context, .. }
             | Error::Runtime { context, .. }
@@ -448,12 +459,12 @@ impl Error {
             | Error::Unknown {
                 ref mut context, ..
             } => {
-                *context = new_ctx;
+                **context = new_ctx;
             }
             Error::Remote {
                 ref mut context, ..
             } => {
-                *context = Some(new_ctx);
+                *context = Some(Box::new(new_ctx));
             }
             _ => {}
         }

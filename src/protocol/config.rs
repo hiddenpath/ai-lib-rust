@@ -101,6 +101,12 @@ pub struct Capabilities {
     pub multimodal: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub audio: bool,
+    /// Structured output / JSON mode (capability or `feature_flags.structured_output`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub structured_output: bool,
+    /// MCP client tool-bridge (`mcp_client` in V2 optional/required lists).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mcp_client: bool,
 }
 
 impl<'de> Deserialize<'de> for Capabilities {
@@ -131,6 +137,8 @@ impl<'de> Deserialize<'de> for Capabilities {
             parallel_tool_calls: bool,
             #[serde(default)]
             extended_thinking: bool,
+            #[serde(default)]
+            structured_output: bool,
         }
 
         #[derive(Deserialize)]
@@ -145,11 +153,52 @@ impl<'de> Deserialize<'de> for Capabilities {
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum Input {
+            /// Shorthand list e.g. `[chat, streaming, tools]` in compliance fixtures.
+            TagList(Vec<String>),
             Legacy(LegacyCaps),
             V2(V2Caps),
         }
 
+        fn from_capability_tags(tags: &[String]) -> Capabilities {
+            let mut c = Capabilities {
+                streaming: false,
+                tools: false,
+                vision: false,
+                agentic: false,
+                parallel_tools: false,
+                reasoning: false,
+                multimodal: false,
+                audio: false,
+                structured_output: false,
+                mcp_client: false,
+            };
+            for t in tags {
+                match t.as_str() {
+                    "chat" | "text" => {}
+                    "streaming" => c.streaming = true,
+                    "tools" => c.tools = true,
+                    "vision" => {
+                        c.vision = true;
+                        c.multimodal = true;
+                    }
+                    "audio" => {
+                        c.audio = true;
+                        c.multimodal = true;
+                    }
+                    "video" => c.multimodal = true,
+                    "agentic" => c.agentic = true,
+                    "parallel_tools" => c.parallel_tools = true,
+                    "reasoning" => c.reasoning = true,
+                    "structured_output" => c.structured_output = true,
+                    "mcp_client" => c.mcp_client = true,
+                    _ => {}
+                }
+            }
+            c
+        }
+
         match Input::deserialize(deserializer)? {
+            Input::TagList(tags) => Ok(from_capability_tags(&tags)),
             Input::Legacy(v) => Ok(Capabilities {
                 streaming: v.streaming,
                 tools: v.tools,
@@ -159,9 +208,13 @@ impl<'de> Deserialize<'de> for Capabilities {
                 reasoning: v.reasoning,
                 multimodal: v.multimodal,
                 audio: v.audio,
+                structured_output: false,
+                mcp_client: false,
             }),
             Input::V2(v) => {
-                let has = |name: &str| v.required.iter().any(|c| c == name) || v.optional.iter().any(|c| c == name);
+                let has = |name: &str| {
+                    v.required.iter().any(|c| c == name) || v.optional.iter().any(|c| c == name)
+                };
                 let flags = v.feature_flags.unwrap_or_default();
                 Ok(Capabilities {
                     streaming: has("streaming"),
@@ -172,6 +225,8 @@ impl<'de> Deserialize<'de> for Capabilities {
                     reasoning: has("reasoning") || flags.extended_thinking,
                     multimodal: has("vision") || has("audio") || has("video"),
                     audio: has("audio"),
+                    structured_output: has("structured_output") || flags.structured_output,
+                    mcp_client: has("mcp_client"),
                 })
             }
         }

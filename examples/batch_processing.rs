@@ -12,9 +12,7 @@
 //! Usage:
 //!   cargo run --example batch_processing
 
-use ai_lib_rust::batch::{
-    BatchCollector, BatchConfig, BatchItem, BatchExecutor, BatchStrategy,
-};
+use ai_lib_rust::batch::{BatchCollector, BatchConfig, BatchExecutor, BatchItem, BatchStrategy};
 use std::time::Duration;
 
 #[tokio::main]
@@ -60,11 +58,11 @@ fn demo_batch_collector() {
         // Check if we should flush
         if collector.should_flush() {
             println!("\n  -> Batch is ready to flush!");
-            
+
             // Drain the batch
             let items = collector.drain();
             println!("  -> Drained {} items", items.len());
-            
+
             for item in &items {
                 println!("     Processing: {}", item.data);
             }
@@ -78,12 +76,18 @@ fn demo_batch_configuration() {
 
     // Different configuration options
     let configs = vec![
-        ("Small batch, quick flush", BatchConfig::new()
-            .with_max_batch_size(3)
-            .with_auto_flush(true)),
-        ("Large batch, no auto-flush", BatchConfig::new()
-            .with_max_batch_size(100)
-            .with_auto_flush(false)),
+        (
+            "Small batch, quick flush",
+            BatchConfig::new()
+                .with_max_batch_size(3)
+                .with_auto_flush(true),
+        ),
+        (
+            "Large batch, no auto-flush",
+            BatchConfig::new()
+                .with_max_batch_size(100)
+                .with_auto_flush(false),
+        ),
     ];
 
     for (name, config) in configs {
@@ -116,13 +120,15 @@ fn demo_batch_executor() {
 
     println!("Created batch items with different priorities:");
     for item in &items {
-        println!("  - {:?}: priority={}, request_id={:?}", 
-            item.data, item.priority, item.request_id);
+        println!(
+            "  - {:?}: priority={}, request_id={:?}",
+            item.data, item.priority, item.request_id
+        );
     }
 
     println!("\nNote: In production, executor would process these items");
     println!("      according to the configured strategy.\n");
-    
+
     // Show executor exists
     let _ = executor;
 }
@@ -134,7 +140,10 @@ fn demo_batch_strategies() {
     let strategies = vec![
         ("Sequential", BatchStrategy::Sequential),
         ("Parallel", BatchStrategy::Parallel),
-        ("Concurrent (5)", BatchStrategy::Concurrent { max_concurrency: 5 }),
+        (
+            "Concurrent (5)",
+            BatchStrategy::Concurrent { max_concurrency: 5 },
+        ),
     ];
 
     for (name, strategy) in strategies {

@@ -18,12 +18,18 @@ impl SttClient {
     }
 
     pub async fn transcribe(&self, audio: &[u8], options: &SttOptions) -> Result<Transcription> {
-        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), self.endpoint_path);
+        let endpoint = format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            self.endpoint_path
+        );
         let part = reqwest::multipart::Part::bytes(audio.to_vec())
             .file_name("audio.wav")
             .mime_str("audio/wav")
             .map_err(|e| Error::configuration(format!("Invalid mime: {}", e)))?;
-        let mut form = reqwest::multipart::Form::new().part("file", part).text("model", self.model.clone());
+        let mut form = reqwest::multipart::Form::new()
+            .part("file", part)
+            .text("model", self.model.clone());
         if let Some(lang) = &options.language {
             form = form.text("language", lang.clone());
         }
@@ -70,7 +76,10 @@ impl SttClient {
             .to_string();
         Ok(Transcription {
             text,
-            language: json.get("language").and_then(|v| v.as_str()).map(String::from),
+            language: json
+                .get("language")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             confidence: None,
             segments: None,
         })

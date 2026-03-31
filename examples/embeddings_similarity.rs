@@ -12,8 +12,8 @@
 //!   cargo run --example embeddings_similarity
 
 use ai_lib_rust::embeddings::{
-    cosine_similarity, euclidean_distance, dot_product, magnitude,
-    normalize_vector, find_most_similar, SimilarityMetric,
+    cosine_similarity, dot_product, euclidean_distance, find_most_similar, magnitude,
+    normalize_vector, SimilarityMetric,
 };
 
 fn main() {
@@ -71,22 +71,28 @@ fn demo_similarity_metrics() {
     // Compare different metrics - using f32
     let query: Vec<f32> = vec![0.5, 0.5, 0.0];
     let candidates: Vec<Vec<f32>> = vec![
-        vec![0.5, 0.5, 0.0],  // Identical
-        vec![0.4, 0.4, 0.1],  // Very similar
-        vec![0.0, 0.0, 1.0],  // Orthogonal
+        vec![0.5, 0.5, 0.0],   // Identical
+        vec![0.4, 0.4, 0.1],   // Very similar
+        vec![0.0, 0.0, 1.0],   // Orthogonal
         vec![-0.5, -0.5, 0.0], // Opposite
     ];
     let labels = ["Identical", "Very similar", "Orthogonal", "Opposite"];
 
     println!("Query vector: {:?}\n", query);
-    println!("{:<15} {:>10} {:>15} {:>12}", "Candidate", "Cosine", "Euclidean", "Dot");
+    println!(
+        "{:<15} {:>10} {:>15} {:>12}",
+        "Candidate", "Cosine", "Euclidean", "Dot"
+    );
     println!("{:-<15} {:-<10} {:-<15} {:-<12}", "", "", "", "");
 
     for (i, candidate) in candidates.iter().enumerate() {
         let cos = cosine_similarity(&query, candidate).unwrap();
         let euc = euclidean_distance(&query, candidate).unwrap();
         let dot = dot_product(&query, candidate).unwrap();
-        println!("{:<15} {:>10.4} {:>15.4} {:>12.4}", labels[i], cos, euc, dot);
+        println!(
+            "{:<15} {:>10.4} {:>15.4} {:>12.4}",
+            labels[i], cos, euc, dot
+        );
     }
     println!();
 }
@@ -97,11 +103,31 @@ fn demo_semantic_search() {
     // Simulated document embeddings - using f32
     // In practice, these would come from an embedding model
     let documents: Vec<(&str, &str, Vec<f32>)> = vec![
-        ("doc1", "Introduction to machine learning", vec![0.8, 0.1, 0.05, 0.05]),
-        ("doc2", "Deep learning neural networks", vec![0.75, 0.15, 0.05, 0.05]),
-        ("doc3", "Cooking recipes for beginners", vec![0.1, 0.1, 0.7, 0.1]),
-        ("doc4", "Advanced calculus mathematics", vec![0.1, 0.7, 0.1, 0.1]),
-        ("doc5", "AI and deep learning guide", vec![0.85, 0.08, 0.02, 0.05]),
+        (
+            "doc1",
+            "Introduction to machine learning",
+            vec![0.8, 0.1, 0.05, 0.05],
+        ),
+        (
+            "doc2",
+            "Deep learning neural networks",
+            vec![0.75, 0.15, 0.05, 0.05],
+        ),
+        (
+            "doc3",
+            "Cooking recipes for beginners",
+            vec![0.1, 0.1, 0.7, 0.1],
+        ),
+        (
+            "doc4",
+            "Advanced calculus mathematics",
+            vec![0.1, 0.7, 0.1, 0.1],
+        ),
+        (
+            "doc5",
+            "AI and deep learning guide",
+            vec![0.85, 0.08, 0.02, 0.05],
+        ),
     ];
 
     println!("Document Collection:");
@@ -123,8 +149,13 @@ fn demo_semantic_search() {
     println!("Top 3 Results:");
     for result in results {
         let (id, title, _) = &documents[result.index];
-        println!("  #{} {} - \"{}\" (score: {:.4})", 
-            result.index + 1, id, title, result.score);
+        println!(
+            "  #{} {} - \"{}\" (score: {:.4})",
+            result.index + 1,
+            id,
+            title,
+            result.score
+        );
     }
     println!();
 }
@@ -150,7 +181,7 @@ fn demo_clustering_concept() {
     let document: Vec<f32> = vec![0.7, 0.3, 0.0];
     println!("Document vector: {:?}\n", document);
     println!("Cluster Assignment Analysis:");
-    
+
     for (name, centroid) in &clusters {
         let sim = cosine_similarity(&document, centroid).unwrap();
         println!("  {}: similarity = {:.4}", name, sim);

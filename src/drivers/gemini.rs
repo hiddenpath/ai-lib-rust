@@ -144,11 +144,9 @@ impl ProviderDriver for GeminiDriver {
             body["generationConfig"] = gen_config;
         }
 
-        if let Some(ext) = extra {
-            if let Value::Object(map) = ext {
-                for (k, v) in map {
-                    body[k] = v.clone();
-                }
+        if let Some(Value::Object(map)) = extra {
+            for (k, v) in map {
+                body[k] = v.clone();
             }
         }
 
@@ -183,6 +181,9 @@ impl ProviderDriver for GeminiDriver {
             prompt_tokens: u["promptTokenCount"].as_u64().unwrap_or(0),
             completion_tokens: u["candidatesTokenCount"].as_u64().unwrap_or(0),
             total_tokens: u["totalTokenCount"].as_u64().unwrap_or(0),
+            reasoning_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
         });
 
         // Gemini tool calls: functionCall parts
@@ -229,7 +230,9 @@ impl ProviderDriver for GeminiDriver {
         }
 
         // Content delta
-        if let Some(text) = v.pointer("/candidates/0/content/parts/0/text").and_then(|t| t.as_str())
+        if let Some(text) = v
+            .pointer("/candidates/0/content/parts/0/text")
+            .and_then(|t| t.as_str())
         {
             if !text.is_empty() {
                 return Ok(Some(StreamingEvent::PartialContentDelta {
@@ -308,7 +311,14 @@ mod tests {
         let driver = GeminiDriver::new("google", vec![Capability::Text]);
         let messages = vec![Message::user("Hello")];
         let req = driver
-            .build_request(&messages, "gemini-2.0-flash", Some(0.5), Some(2048), false, None)
+            .build_request(
+                &messages,
+                "gemini-2.0-flash",
+                Some(0.5),
+                Some(2048),
+                false,
+                None,
+            )
             .unwrap();
         assert_eq!(req.body["generationConfig"]["temperature"], 0.5);
         assert_eq!(req.body["generationConfig"]["maxOutputTokens"], 2048);

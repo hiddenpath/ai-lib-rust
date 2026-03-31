@@ -59,6 +59,8 @@ pub struct ChatRequestBuilder<'a> {
     pub(crate) tool_choice: Option<serde_json::Value>,
     /// Optional model override; when set, overrides the client's default model for this request.
     pub(crate) model: Option<String>,
+    /// JSON / structured output (`response_format` in provider request body).
+    pub(crate) response_format: Option<crate::structured::JsonModeConfig>,
 }
 
 impl<'a> ChatRequestBuilder<'a> {
@@ -72,6 +74,7 @@ impl<'a> ChatRequestBuilder<'a> {
             tools: None,
             tool_choice: None,
             model: None,
+            response_format: None,
         }
     }
 
@@ -140,6 +143,12 @@ impl<'a> ChatRequestBuilder<'a> {
     /// ```
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Enable structured output using JSON mode configuration (OpenAI-style `response_format`).
+    pub fn response_format(mut self, cfg: crate::structured::JsonModeConfig) -> Self {
+        self.response_format = Some(cfg);
         self
     }
 
@@ -369,6 +378,7 @@ impl<'a> ChatRequestBuilder<'a> {
                 tools: unified_req.tools.clone(),
                 tool_choice: unified_req.tool_choice.clone(),
                 model: Some(unified_req.model.clone()),
+                response_format: unified_req.response_format.clone(),
             };
             builder.execute_stream().await?
         };
@@ -403,6 +413,7 @@ impl<'a> ChatRequestBuilder<'a> {
                 StreamingEvent::StreamEnd { .. } => {
                     break;
                 }
+                StreamingEvent::ThinkingDelta { .. } => {}
                 other => {
                     // Log unexpected events for debugging
                     tracing::warn!("Unexpected event in execute(): {:?}", other);
@@ -434,9 +445,7 @@ impl<'a> ChatRequestBuilder<'a> {
     }
 
     fn into_unified_request(self) -> crate::protocol::UnifiedRequest {
-        let model = self
-            .model
-            .unwrap_or_else(|| self.client.model_id.clone());
+        let model = self.model.unwrap_or_else(|| self.client.model_id.clone());
         crate::protocol::UnifiedRequest {
             operation: "chat".to_string(),
             model,
@@ -446,7 +455,7 @@ impl<'a> ChatRequestBuilder<'a> {
             stream: self.stream,
             tools: self.tools,
             tool_choice: self.tool_choice,
-            response_format: None,
+            response_format: self.response_format,
         }
     }
 }

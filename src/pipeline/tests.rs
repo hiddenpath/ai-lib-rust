@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod pipeline_tests {
     use crate::pipeline::{fan_out, select, Transform};
     use crate::protocol::CandidateConfig;
     use futures::StreamExt;

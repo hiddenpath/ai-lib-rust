@@ -78,7 +78,7 @@ impl HookManager {
 
     pub fn register(&self, hook_type: HookType, hook: Hook) {
         let mut hooks = self.hooks.write().unwrap();
-        let entry = hooks.entry(hook_type).or_insert_with(Vec::new);
+        let entry = hooks.entry(hook_type).or_default();
         entry.push(hook);
         entry.sort_by_key(|h| h.priority);
     }

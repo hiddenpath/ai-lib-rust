@@ -27,8 +27,9 @@
 
 // Re-export core types from feedback module (always compiled)
 pub use crate::feedback::{
-    ChoiceSelectionFeedback, CorrectionFeedback, FeedbackEvent, FeedbackSink, NoopFeedbackSink,
-    RatingFeedback, RegenerateFeedback, StopFeedback, TextFeedback, ThumbsFeedback, noop_sink,
+    noop_sink, ChoiceSelectionFeedback, CorrectionFeedback, FeedbackEvent, FeedbackSink,
+    NoopFeedbackSink, RatingFeedback, RegenerateFeedback, StopFeedback, TextFeedback,
+    ThumbsFeedback,
 };
 
 use crate::Result;
@@ -111,9 +112,7 @@ pub struct CompositeFeedbackSink {
 }
 impl CompositeFeedbackSink {
     pub fn new() -> Self {
-        Self {
-            sinks: Vec::new(),
-        }
+        Self { sinks: Vec::new() }
     }
     pub fn add_sink(mut self, sink: Arc<dyn FeedbackSink>) -> Self {
         self.sinks.push(sink);

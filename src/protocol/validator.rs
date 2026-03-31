@@ -307,7 +307,8 @@ impl ProtocolValidator {
         }
 
         // Validate protocol version
-        if !(manifest.protocol_version.starts_with("1.") || manifest.protocol_version.starts_with("2."))
+        if !(manifest.protocol_version.starts_with("1.")
+            || manifest.protocol_version.starts_with("2."))
         {
             return Err(ProtocolError::InvalidVersion {
                 version: manifest.protocol_version.clone(),

@@ -192,7 +192,10 @@ impl RateLimiter {
 impl RateLimiterConfig {
     /// Create a new config with default values
     pub fn new() -> Self {
-        Self { rps: 10.0, burst: 10.0 }
+        Self {
+            rps: 10.0,
+            burst: 10.0,
+        }
     }
 
     /// Set the maximum tokens (burst size)
@@ -253,7 +256,7 @@ mod tests {
     async fn test_rate_limiter_initial_burst() {
         let config = RateLimiterConfig::from_rps(10.0).unwrap();
         let limiter = RateLimiter::new(config);
-        
+
         // Should have burst tokens available
         let snapshot = limiter.snapshot().await;
         assert_eq!(snapshot.burst, 10.0);
@@ -264,7 +267,7 @@ mod tests {
     async fn test_rate_limiter_acquire() {
         let config = RateLimiterConfig::from_rps(100.0).unwrap(); // High rate for fast test
         let limiter = RateLimiter::new(config);
-        
+
         // Should succeed for burst
         for _ in 0..10 {
             assert!(limiter.acquire().await.is_ok());
@@ -277,12 +280,12 @@ mod tests {
             .with_max_tokens(3)
             .with_refill_rate(1.0);
         let limiter = RateLimiter::new(config);
-        
+
         // Should succeed for burst
         assert!(limiter.try_acquire().await);
         assert!(limiter.try_acquire().await);
         assert!(limiter.try_acquire().await);
-        
+
         // Fourth should fail (no tokens left)
         assert!(!limiter.try_acquire().await);
     }
@@ -291,7 +294,7 @@ mod tests {
     async fn test_rate_limiter_zero_rps() {
         let config = RateLimiterConfig::from_rps(0.0).unwrap();
         let limiter = RateLimiter::new(config);
-        
+
         // Zero RPS means unlimited
         assert!(limiter.acquire().await.is_ok());
     }
@@ -300,19 +303,21 @@ mod tests {
     async fn test_rate_limiter_update_budget() {
         let config = RateLimiterConfig::from_rps(10.0).unwrap();
         let limiter = RateLimiter::new(config);
-        
+
         // Set remaining to 0 with reset
-        limiter.update_budget(Some(0), Some(Duration::from_millis(50))).await;
-        
+        limiter
+            .update_budget(Some(0), Some(Duration::from_millis(50)))
+            .await;
+
         let snapshot = limiter.snapshot().await;
         assert!(snapshot.estimated_wait_ms.is_some());
-        
+
         // Wait for reset
         tokio::time::sleep(Duration::from_millis(60)).await;
-        
+
         // Update with tokens available
         limiter.update_budget(Some(10), None).await;
-        
+
         // Should be unblocked
         assert!(limiter.try_acquire().await);
     }
@@ -323,7 +328,7 @@ mod tests {
             .with_max_tokens(10)
             .with_refill_rate(5.0);
         let limiter = RateLimiter::new(config);
-        
+
         let snapshot = limiter.snapshot().await;
         assert_eq!(snapshot.rps, 5.0);
         assert_eq!(snapshot.burst, 10.0);
@@ -334,20 +339,20 @@ mod tests {
     async fn test_rate_limiter_refill() {
         let config = RateLimiterConfig::new()
             .with_max_tokens(5)
-            .with_refill_rate(100.0); // 100 tokens/sec = 1 token/10ms
+            .with_refill_rate(10.0); // 10 tokens/sec = 1 token/100ms
         let limiter = RateLimiter::new(config);
-        
+
         // Consume all tokens
         for _ in 0..5 {
             assert!(limiter.try_acquire().await);
         }
-        
+
         // Should be empty
         assert!(!limiter.try_acquire().await);
-        
-        // Wait for refill (10ms = 1 token at 100 rps)
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        
+
+        // Wait for one refill interval
+        tokio::time::sleep(Duration::from_millis(120)).await;
+
         // Should have at least 1 token now
         assert!(limiter.try_acquire().await);
     }

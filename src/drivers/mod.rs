@@ -12,8 +12,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::error::Error;
-use crate::protocol::v2::manifest::ApiStyle;
 use crate::protocol::v2::capabilities::Capability;
+use crate::protocol::v2::manifest::ApiStyle;
 use crate::protocol::ProtocolError;
 use crate::types::events::StreamingEvent;
 use crate::types::message::{Message, MessageContent};
@@ -57,6 +57,11 @@ pub struct UsageInfo {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// OpenAI-style `completion_tokens_details.reasoning_tokens`.
+    pub reasoning_tokens: Option<u64>,
+    /// Anthropic cache read / creation input tokens (when present).
+    pub cache_read_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
 }
 
 /// Core trait for provider-specific API adaptation.
@@ -117,6 +122,20 @@ impl OpenAiDriver {
     }
 }
 
+fn parse_openai_usage_value(u: &Value) -> UsageInfo {
+    let reasoning = u
+        .pointer("/completion_tokens_details/reasoning_tokens")
+        .and_then(|v| v.as_u64());
+    UsageInfo {
+        prompt_tokens: u["prompt_tokens"].as_u64().unwrap_or(0),
+        completion_tokens: u["completion_tokens"].as_u64().unwrap_or(0),
+        total_tokens: u["total_tokens"].as_u64().unwrap_or(0),
+        reasoning_tokens: reasoning,
+        cache_read_tokens: None,
+        cache_creation_tokens: None,
+    }
+}
+
 #[async_trait]
 impl ProviderDriver for OpenAiDriver {
     fn provider_id(&self) -> &str {
@@ -169,11 +188,9 @@ impl ProviderDriver for OpenAiDriver {
         if let Some(mt) = max_tokens {
             body["max_tokens"] = serde_json::json!(mt);
         }
-        if let Some(ext) = extra {
-            if let Value::Object(map) = ext {
-                for (k, v) in map {
-                    body[k] = v.clone();
-                }
+        if let Some(Value::Object(map)) = extra {
+            for (k, v) in map {
+                body[k] = v.clone();
             }
         }
 
@@ -195,11 +212,7 @@ impl ProviderDriver for OpenAiDriver {
             .pointer("/choices/0/finish_reason")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let usage = body.get("usage").map(|u| UsageInfo {
-            prompt_tokens: u["prompt_tokens"].as_u64().unwrap_or(0),
-            completion_tokens: u["completion_tokens"].as_u64().unwrap_or(0),
-            total_tokens: u["total_tokens"].as_u64().unwrap_or(0),
-        });
+        let usage = body.get("usage").map(parse_openai_usage_value);
         let tool_calls = body
             .pointer("/choices/0/message/tool_calls")
             .and_then(|v| v.as_array())
@@ -219,13 +232,18 @@ impl ProviderDriver for OpenAiDriver {
         if data.trim().is_empty() || self.is_stream_done(data) {
             return Ok(None);
         }
-        let v: Value = serde_json::from_str(data)
-            .map_err(|e| Error::Protocol(ProtocolError::ValidationError(
-                format!("Failed to parse SSE data: {}", e),
-            )))?;
+        let v: Value = serde_json::from_str(data).map_err(|e| {
+            Error::Protocol(ProtocolError::ValidationError(format!(
+                "Failed to parse SSE data: {}",
+                e
+            )))
+        })?;
 
         // Content delta
-        if let Some(content) = v.pointer("/choices/0/delta/content").and_then(|c| c.as_str()) {
+        if let Some(content) = v
+            .pointer("/choices/0/delta/content")
+            .and_then(|c| c.as_str())
+        {
             if !content.is_empty() {
                 return Ok(Some(StreamingEvent::PartialContentDelta {
                     content: content.to_string(),
@@ -234,8 +252,24 @@ impl ProviderDriver for OpenAiDriver {
             }
         }
 
+        // Reasoning / extended thinking (OpenAI-compatible `reasoning_content` delta)
+        if let Some(thinking) = v
+            .pointer("/choices/0/delta/reasoning_content")
+            .and_then(|c| c.as_str())
+        {
+            if !thinking.is_empty() {
+                return Ok(Some(StreamingEvent::ThinkingDelta {
+                    thinking: thinking.to_string(),
+                    tool_consideration: None,
+                }));
+            }
+        }
+
         // Finish reason
-        if let Some(reason) = v.pointer("/choices/0/finish_reason").and_then(|r| r.as_str()) {
+        if let Some(reason) = v
+            .pointer("/choices/0/finish_reason")
+            .and_then(|r| r.as_str())
+        {
             return Ok(Some(StreamingEvent::StreamEnd {
                 finish_reason: Some(reason.to_string()),
             }));
@@ -267,12 +301,8 @@ pub fn create_driver(
         ApiStyle::OpenAiCompatible | ApiStyle::Custom => {
             Box::new(OpenAiDriver::new(provider_id, capabilities))
         }
-        ApiStyle::AnthropicMessages => {
-            Box::new(AnthropicDriver::new(provider_id, capabilities))
-        }
-        ApiStyle::GeminiGenerate => {
-            Box::new(GeminiDriver::new(provider_id, capabilities))
-        }
+        ApiStyle::AnthropicMessages => Box::new(AnthropicDriver::new(provider_id, capabilities)),
+        ApiStyle::GeminiGenerate => Box::new(GeminiDriver::new(provider_id, capabilities)),
     }
 }
 
@@ -303,6 +333,38 @@ mod tests {
         assert_eq!(resp.content.as_deref(), Some("Hi there!"));
         assert_eq!(resp.finish_reason.as_deref(), Some("stop"));
         assert_eq!(resp.usage.unwrap().total_tokens, 15);
+    }
+
+    #[test]
+    fn test_openai_driver_parse_response_reasoning_tokens() {
+        let driver = OpenAiDriver::new("openai", vec![]);
+        let body = serde_json::json!({
+            "choices": [{"message": {"content": "Hello, world!"}, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+                "completion_tokens_details": {"reasoning_tokens": 3}
+            }
+        });
+        let resp = driver.parse_response(&body).unwrap();
+        let u = resp.usage.expect("usage");
+        assert_eq!(u.reasoning_tokens, Some(3));
+        assert_eq!(u.prompt_tokens, 10);
+        assert_eq!(u.completion_tokens, 5);
+    }
+
+    #[test]
+    fn test_openai_driver_parse_stream_reasoning_delta() {
+        let driver = OpenAiDriver::new("openai", vec![]);
+        let data = r#"{"choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}"#;
+        let event = driver.parse_stream_event(data).unwrap();
+        match event {
+            Some(StreamingEvent::ThinkingDelta { thinking, .. }) => {
+                assert_eq!(thinking, "Let me think...");
+            }
+            _ => panic!("Expected ThinkingDelta, got {:?}", event),
+        }
     }
 
     #[test]

@@ -68,7 +68,7 @@ mod pii;
 mod result;
 
 pub use config::{FilterAction, FilterRule, GuardrailsConfig, GuardrailsConfigBuilder};
-pub use filters::{KeywordFilter, PatternFilter, ContentFilter};
+pub use filters::{ContentFilter, KeywordFilter, PatternFilter};
 pub use pii::PiiDetector;
 pub use result::{CheckResult, Violation, ViolationType};
 
@@ -131,17 +131,17 @@ impl Guardrails {
     /// Check multiple messages
     pub fn check_messages(&self, messages: &[Message]) -> CheckResult {
         let mut combined_result = CheckResult::passed();
-        
+
         for message in messages {
             let result = self.check_message(message);
             combined_result = combined_result.merge(result);
-            
+
             // Early exit if blocked and config says to stop on first block
             if combined_result.is_blocked() && self.config.stop_on_first_block {
                 break;
             }
         }
-        
+
         combined_result
     }
 
@@ -157,7 +157,9 @@ impl Guardrails {
 
         // Apply PII detection
         if let Some(ref pii_detector) = self.pii_detector {
-            if (is_input && self.config.check_pii_input) || (!is_input && self.config.check_pii_output) {
+            if (is_input && self.config.check_pii_input)
+                || (!is_input && self.config.check_pii_output)
+            {
                 violations.extend(pii_detector.check(content));
             }
         }
@@ -170,10 +172,14 @@ impl Guardrails {
         let mut sanitized = content.to_string();
 
         // Sanitize keywords
-        sanitized = self.keyword_filter.sanitize(&sanitized, &self.config.sanitize_replacement);
+        sanitized = self
+            .keyword_filter
+            .sanitize(&sanitized, &self.config.sanitize_replacement);
 
         // Sanitize patterns
-        sanitized = self.pattern_filter.sanitize(&sanitized, &self.config.sanitize_replacement);
+        sanitized = self
+            .pattern_filter
+            .sanitize(&sanitized, &self.config.sanitize_replacement);
 
         // Sanitize PII
         if let Some(ref pii_detector) = self.pii_detector {
@@ -192,22 +198,20 @@ impl Guardrails {
 /// Extract text content from a Message
 fn extract_text_content(message: &Message) -> String {
     use crate::types::message::MessageContent;
-    
+
     match &message.content {
         MessageContent::Text(text) => text.clone(),
-        MessageContent::Blocks(blocks) => {
-            blocks
-                .iter()
-                .filter_map(|block| {
-                    use crate::types::message::ContentBlock;
-                    match block {
-                        ContentBlock::Text { text } => Some(text.clone()),
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-        }
+        MessageContent::Blocks(blocks) => blocks
+            .iter()
+            .filter_map(|block| {
+                use crate::types::message::ContentBlock;
+                match block {
+                    ContentBlock::Text { text } => Some(text.clone()),
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
     }
 }
 
@@ -234,7 +238,7 @@ mod tests {
             .add_keyword_filter("blocked_word", FilterAction::Block)
             .build();
         let guardrails = Guardrails::new(config);
-        
+
         let result = guardrails.check_input("This contains blocked_word in it");
         assert!(result.is_blocked());
     }
@@ -245,7 +249,7 @@ mod tests {
             .add_keyword_filter("warn_word", FilterAction::Warn)
             .build();
         let guardrails = Guardrails::new(config);
-        
+
         let result = guardrails.check_input("This contains warn_word in it");
         assert!(result.is_warned());
         assert!(!result.is_blocked());
@@ -258,7 +262,7 @@ mod tests {
             .sanitize_replacement("[REDACTED]".to_string())
             .build();
         let guardrails = Guardrails::new(config);
-        
+
         let sanitized = guardrails.sanitize("My secret is here");
         assert!(sanitized.contains("[REDACTED]"));
         assert!(!sanitized.contains("secret"));
@@ -270,7 +274,7 @@ mod tests {
             .enable_pii_detection(true)
             .build();
         let guardrails = Guardrails::new(config);
-        
+
         let result = guardrails.check_input("My email is test@example.com");
         assert!(result.has_violations());
     }

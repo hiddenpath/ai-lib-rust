@@ -23,7 +23,11 @@ impl RerankerClient {
         documents: &[impl AsRef<str>],
         options: &RerankOptions,
     ) -> Result<Vec<RerankResult>> {
-        let endpoint = format!("{}{}", self.base_url.trim_end_matches('/'), self.endpoint_path);
+        let endpoint = format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            self.endpoint_path
+        );
         let docs: Vec<String> = documents.iter().map(|d| d.as_ref().to_string()).collect();
         let mut body = serde_json::json!({
             "model": self.model,
@@ -67,7 +71,12 @@ impl RerankerClient {
         let results = json
             .get("results")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| Error::api_with_context("Invalid rerank response: missing results", ErrorContext::new()))?;
+            .ok_or_else(|| {
+                Error::api_with_context(
+                    "Invalid rerank response: missing results",
+                    ErrorContext::new(),
+                )
+            })?;
         let mut out = Vec::with_capacity(results.len());
         for r in results {
             let index = r.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
@@ -136,9 +145,7 @@ impl RerankerClientBuilder {
         let base_url = self
             .base_url
             .unwrap_or_else(|| "https://api.cohere.com/v2".to_string());
-        let endpoint_path = self
-            .endpoint_path
-            .unwrap_or_else(|| "/rerank".to_string());
+        let endpoint_path = self.endpoint_path.unwrap_or_else(|| "/rerank".to_string());
         let endpoint_path = if endpoint_path.starts_with('/') {
             endpoint_path
         } else {

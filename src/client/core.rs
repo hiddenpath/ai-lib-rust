@@ -68,13 +68,11 @@ impl AiClient {
 
     fn extract_total_tokens(usage: &Option<serde_json::Value>) -> Option<u64> {
         let u = usage.as_ref()?;
-        u.get("total_tokens")
-            .and_then(|v| v.as_u64())
-            .or_else(|| {
-                u.get("usage")
-                    .and_then(|nested| nested.get("total_tokens"))
-                    .and_then(|v| v.as_u64())
-            })
+        u.get("total_tokens").and_then(|v| v.as_u64()).or_else(|| {
+            u.get("usage")
+                .and_then(|nested| nested.get("total_tokens"))
+                .and_then(|v| v.as_u64())
+        })
     }
 
     /// Snapshot current runtime signals (facts only) for application-layer orchestration.
@@ -95,10 +93,7 @@ impl AiClient {
             None => None,
         };
 
-        let circuit_breaker = match &self.breaker {
-            Some(cb) => Some(cb.snapshot()),
-            None => None,
-        };
+        let circuit_breaker = self.breaker.as_ref().map(|cb| cb.snapshot());
 
         crate::client::signals::SignalsSnapshot {
             inflight,
@@ -238,7 +233,7 @@ impl AiClient {
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|v| *v > 0);
 
-        let chosen = env_override.unwrap_or_else(|| {
+        let chosen = env_override.unwrap_or({
             if n <= 3 {
                 1
             } else if n <= 10 {
@@ -423,10 +418,13 @@ impl AiClient {
         request: &crate::client::chat::ChatRequestBuilder<'_>,
     ) -> Result<()> {
         // Build a minimal UnifiedRequest to check capabilities via PolicyEngine
-        let mut mock_req = crate::protocol::UnifiedRequest::default();
-        mock_req.stream = request.stream;
-        mock_req.tools = request.tools.clone();
-        mock_req.messages = request.messages.clone();
+        let mock_req = crate::protocol::UnifiedRequest {
+            stream: request.stream,
+            tools: request.tools.clone(),
+            messages: request.messages.clone(),
+            response_format: request.response_format.clone(),
+            ..Default::default()
+        };
 
         let policy = crate::client::policy::PolicyEngine::new(&self.manifest);
         policy.validate_capabilities(&mock_req)

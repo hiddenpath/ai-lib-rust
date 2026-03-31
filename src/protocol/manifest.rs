@@ -103,6 +103,8 @@ impl ProtocolManifest {
                 self.capabilities.multimodal || self.capabilities.vision || self.capabilities.audio
             }
             "audio" => self.capabilities.audio,
+            "structured_output" => self.capabilities.structured_output,
+            "mcp_client" => self.capabilities.mcp_client,
             _ => false,
         }
     }
@@ -214,6 +216,15 @@ impl ProtocolManifest {
                 PathMapper::set_path(&mut provider_request, mapped, tool_choice.clone()).map_err(
                     |e| ProtocolError::ValidationError(format!("Failed to set tool_choice: {}", e)),
                 )?;
+            }
+        }
+
+        if let Some(fmt) = &request.response_format {
+            let patch = fmt.to_openai_format();
+            if let serde_json::Value::Object(extra) = patch {
+                for (k, v) in extra {
+                    provider_request[k] = v;
+                }
             }
         }
 
