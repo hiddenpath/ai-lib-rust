@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - **`ai-lib-wasm` crate (PT-072)**: WASI `wasm32-wasip1` thin exports over `ai-lib-core`. Six host-facing C functions: `ailib_load_manifest`, `ailib_check_capability`, `ailib_build_chat_request`, `ailib_parse_chat_response`, `ailib_classify_error`, `ailib_extract_usage`, plus `ailib_out_*` / `ailib_err_*` memory accessors. Release binary **1.24 MB** (< 2 MB gate). Zero P-module dependencies.
 - `wasm_manifest::load_manifest_validated()` in `ai-lib-core::protocol` — in-memory YAML parse + `ProtocolValidator` (works on both native and WASM).
 - `WasmChatRequest` DTO in `ai-lib-wasm` for safe deserialization without requiring `Deserialize` on `UnifiedRequest`.
-- **PT-073 (Rust):** `crates/ai-lib-core/tests/pt073_compliance_subset.rs` — `protocol_loading` + `message_building` compliance cases when `COMPLIANCE_DIR` points at `ai-protocol/tests/compliance`. Wasmtime CLI smoke: `scripts/wasmtime-pt073-smoke.ps1`.
+- **PT-073 (Rust):** full compliance YAML suite on `ai-lib-core` via `--test compliance_from_core` (shared runner with the facade `compliance` test). Wasmtime in-process harness: `cargo test -p ai-lib-wasmtime-harness --test wasm_compliance` after building `ai-lib-wasm` for `wasm32-wasip1` release.
 
 ### Changed
 

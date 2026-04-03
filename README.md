@@ -15,7 +15,7 @@ Unlike traditional adapter libraries that hardcode provider-specific logic, `ai-
 
 ## 🏗️ Cargo workspace
 
-The repo is a **Cargo workspace** with four crates:
+The repo is a **Cargo workspace** with four published-style crates plus an optional wasmtime harness:
 
 | Crate | Path | Role |
 |-------|------|------|
@@ -23,6 +23,7 @@ The repo is a **Cargo workspace** with four crates:
 | `ai-lib-contact` | `crates/ai-lib-contact` | Policy layer: cache, batch, routing, plugins, interceptors, tokens, telemetry, guardrails, resilience (depends on `ai-lib-core`). |
 | `ai-lib-wasm` | `crates/ai-lib-wasm` | WASI thin exports over `ai-lib-core` for `wasm32-wasip1` (6 host-facing functions, < 2 MB). Not published to crates.io. |
 | `ai-lib-rust` | `crates/ai-lib-rust` | Thin facade: re-exports core + contact so existing `ai_lib_rust::…` paths stay stable. Holds integration tests, examples, and CLI bins. |
+| `ai-lib-wasmtime-harness` | `crates/ai-lib-wasmtime-harness` | PT-073: optional integration tests that load `ai_lib_wasm.wasm` in wasmtime (heavy deps; run with `-p ai-lib-wasmtime-harness`). |
 
 From the repo root, `cargo test` runs the default workspace members (the facade crate and its tests). Depend on `ai-lib-core` or `ai-lib-contact` directly if you want a smaller dependency surface without the full umbrella crate.
 
@@ -85,14 +86,17 @@ Classification follows a priority pipeline: provider-specific error code → HTT
 Cross-runtime behavioral consistency is verified by a shared YAML-based test suite from the `ai-protocol` repository:
 
 ```bash
-# Run compliance tests (facade crate)
+# Run compliance tests (facade crate; shared YAML runner)
 cargo test --test compliance
 
 # With explicit compliance directory
 COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test --test compliance
 
-# PT-073 core-only subset (protocol_loading + message_building) on ai-lib-core
-COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test -p ai-lib-core pt073_
+# Same full YAML suite from ai-lib-core (shared `compliance_runner` module)
+COMPLIANCE_DIR=../ai-protocol/tests/compliance cargo test -p ai-lib-core --test compliance_from_core
+
+# PT-073: wasmtime loads release WASI build (after `cargo build -p ai-lib-wasm --target wasm32-wasip1 --release`)
+cargo test -p ai-lib-wasmtime-harness --test wasm_compliance
 ```
 
 For details, see [CROSS_RUNTIME.md](https://github.com/ailib-official/ai-protocol/blob/main/docs/CROSS_RUNTIME.md).
