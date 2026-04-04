@@ -1,0 +1,152 @@
+[package]
+name = "ai-lib-rust"
+version = "0.9.3"
+edition = "2021"
+authors = ["AI-Protocol Team"]
+license = "MIT OR Apache-2.0"
+description = "Protocol Runtime for AI-Protocol - A high-performance Rust reference implementation"
+repository = "https://github.com/ailib-official/ai-lib-rust"
+readme = "../../README.md"
+rust-version = "1.75"
+keywords = ["ai", "unified", "api", "llm", "multi-provider"]
+categories = ["api-bindings", "network-programming", "asynchronous"]
+
+include = [
+  "Cargo.toml",
+  "../../README.md",
+  "../../README_CN.md",
+  "../../docs/ARCHITECTURE.md",
+  "../../CHANGELOG.md",
+  "../../LICENSE-APACHE",
+  "../../LICENSE-MIT",
+  "src/**",
+  "examples/**",
+]
+
+[dependencies]
+ai-lib-core = { path = "../ai-lib-core" }
+ai-lib-contact = { path = "../ai-lib-contact", default-features = false }
+
+# Direct deps for examples, binaries, and integration tests (same surface as pre-workspace root crate).
+tokio = { version = "1.0", features = ["full"] }
+futures = { version = "0.3", features = ["alloc"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+reqwest = { version = "0.11", default-features = false, features = ["json", "stream", "rustls-tls", "blocking", "multipart"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+arc-swap = "1.6"
+notify = "6.1"
+jsonschema = "0.18"
+schemars = "0.8"
+regex = "1.10"
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2.5"
+async-trait = "0.1"
+bytes = "1.5"
+async-recursion = "1.0"
+lru = "0.12"
+keyring = "2.0"
+uuid = { version = "1.6", features = ["v4"] }
+base64 = "0.22"
+sha2 = "0.10"
+once_cell = "1.19"
+tokio-stream = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockito = "1.2"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "protocol_loading"
+path = "benches/protocol_loading.rs"
+harness = false
+
+[[bench]]
+name = "request_compilation"
+path = "benches/request_compilation.rs"
+harness = false
+
+[[bench]]
+name = "streaming_pipeline"
+path = "benches/streaming_pipeline.rs"
+harness = false
+
+[features]
+default = []
+embeddings = ["ai-lib-core/embeddings"]
+batch = ["ai-lib-core/batch", "ai-lib-contact/batch"]
+guardrails = ["ai-lib-contact/guardrails"]
+tokens = ["ai-lib-contact/tokens"]
+telemetry = ["ai-lib-contact/telemetry"]
+mcp = ["ai-lib-core/mcp"]
+computer_use = ["ai-lib-core/computer_use"]
+multimodal = ["ai-lib-core/multimodal"]
+reasoning = ["ai-lib-core/reasoning"]
+stt = ["ai-lib-core/stt"]
+tts = ["ai-lib-core/tts"]
+reranking = ["ai-lib-core/reranking"]
+routing_mvp = ["ai-lib-contact/routing_mvp"]
+interceptors = ["ai-lib-contact/interceptors"]
+full = [
+    "embeddings", "batch", "guardrails", "tokens", "telemetry",
+    "routing_mvp", "interceptors",
+    "mcp", "computer_use", "multimodal", "reasoning",
+    "stt", "tts", "reranking",
+]
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "custom_protocol"
+path = "examples/custom_protocol.rs"
+
+[[example]]
+name = "test_protocol_loading"
+path = "examples/test_protocol_loading.rs"
+
+[[example]]
+name = "connectivity_report"
+path = "examples/connectivity_report.rs"
+
+[[example]]
+name = "guardrails_usage"
+path = "examples/guardrails_usage.rs"
+required-features = ["guardrails"]
+
+[[example]]
+name = "resilience_patterns"
+path = "examples/resilience_patterns.rs"
+
+[[example]]
+name = "batch_processing"
+path = "examples/batch_processing.rs"
+required-features = ["batch"]
+
+[[example]]
+name = "embeddings_similarity"
+path = "examples/embeddings_similarity.rs"
+required-features = ["embeddings"]
+
+[[example]]
+name = "multi_provider"
+path = "examples/multi_provider.rs"
+required-features = ["routing_mvp"]
+
+[[example]]
+name = "tavily_tool_calling"
+path = "examples/tavily_tool_calling.rs"
+
+[[bin]]
+name = "validate_protocols"
+path = "src/bin/validate_protocols.rs"
+
+[[bin]]
+name = "ai-protocol-cli"
+path = "src/bin/ai_protocol_cli.rs"

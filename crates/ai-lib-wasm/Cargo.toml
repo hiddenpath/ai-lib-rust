@@ -1,0 +1,21 @@
+[package]
+name = "ai-lib-wasm"
+version = "0.9.3"
+edition = "2021"
+authors = ["AI-Protocol Team"]
+license = "MIT OR Apache-2.0"
+description = "WASI wasm32 exports for ai-lib-core execution layer (PT-072)"
+repository = "https://github.com/ailib-official/ai-lib-rust"
+rust-version = "1.75"
+publish = false
+
+[lib]
+name = "ai_lib_wasm"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+ai-lib-core = { path = "../ai-lib-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"

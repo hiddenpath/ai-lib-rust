@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- E/P boundary types: `ExecutionResult`, `ExecutionMetadata`, `ExecutionUsage` (`types::execution_result`), plus JSON serde for `StandardErrorCode` via canonical `E1xxx` strings.
+- **`ai-lib-wasm` crate (PT-072)**: WASI `wasm32-wasip1` thin exports over `ai-lib-core`. Six host-facing C functions: `ailib_load_manifest`, `ailib_check_capability`, `ailib_build_chat_request`, `ailib_parse_chat_response`, `ailib_classify_error`, `ailib_extract_usage`, plus `ailib_out_*` / `ailib_err_*` memory accessors. Release binary **1.24 MB** (< 2 MB gate). Zero P-module dependencies.
+- `wasm_manifest::load_manifest_validated()` in `ai-lib-core::protocol` — in-memory YAML parse + `ProtocolValidator` (works on both native and WASM).
+- `WasmChatRequest` DTO in `ai-lib-wasm` for safe deserialization without requiring `Deserialize` on `UnifiedRequest`.
+- **PT-073 (Rust):** full compliance YAML suite on `ai-lib-core` via `--test compliance_from_core` (shared runner with the facade `compliance` test). Wasmtime in-process harness: `cargo test -p ai-lib-wasmtime-harness --test wasm_compliance` after building `ai-lib-wasm` for `wasm32-wasip1` release.
+
+### Changed
+
+- **Workspace layout (PT-068)**: split into `ai-lib-core` (execution), `ai-lib-contact` (policy), `ai-lib-wasm` (WASI exports), and `ai-lib-rust` (facade re-exports, tests, examples, bins).
+- **`AiClient`**: no longer wires circuit breaker / rate limiter; use `ai_lib_contact::resilience` (or the facade `ai_lib_rust::resilience`) beside the client. `SignalsSnapshot` / preflight policy focus on inflight saturation only; header-driven rate-limit updates and breaker record hooks were removed from the client path.
+- `ai-lib-core`: on `wasm32` targets, `client`, `transport`, `pipeline`, `feedback`, `registry`, and optional feature modules (`embeddings`, `mcp`, etc.) are excluded via `cfg(not(target_arch = "wasm32"))`. `ProtocolValidator` on wasm uses `validate_basic` only (no `jsonschema` crate).
+- `UsageInfo` now derives `serde::Serialize` (needed for WASM JSON output).
+
 ## 0.9.1 - 2026-03-08
 
 ### Added
