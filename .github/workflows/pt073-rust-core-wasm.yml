@@ -24,7 +24,7 @@ jobs:
       - name: Checkout ai-protocol
         uses: actions/checkout@v4
         with:
-          repository: hiddenpath/ai-protocol
+          repository: ailib-official/ai-protocol
           path: ai-protocol
 
       - name: Install Rust (stable + wasm32-wasip1)
