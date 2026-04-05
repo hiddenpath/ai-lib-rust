@@ -21,8 +21,11 @@ use crate::error_code::StandardErrorCode;
 /// Token usage attached to an execution (aligned with driver [`UsageInfo`](crate::drivers::UsageInfo)).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionUsage {
+    #[serde(default)]
     pub prompt_tokens: u64,
+    #[serde(default)]
     pub completion_tokens: u64,
+    #[serde(default)]
     pub total_tokens: u64,
     /// OpenAI-style `completion_tokens_details.reasoning_tokens`.
     pub reasoning_tokens: Option<u64>,
