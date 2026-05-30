@@ -7,6 +7,7 @@
 pub use ai_lib_core::*;
 
 pub use ai_lib_contact::cache;
+pub use ai_lib_contact::context;
 pub use ai_lib_contact::plugins;
 pub use ai_lib_contact::resilience;
 

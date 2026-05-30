@@ -6,6 +6,7 @@
 //! Policy and cross-cutting modules for AI-Protocol. Depends on `ai-lib-core`.
 
 pub mod cache;
+pub mod context;
 pub mod plugins;
 pub mod resilience;
 
