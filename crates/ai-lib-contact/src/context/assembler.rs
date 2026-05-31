@@ -2,7 +2,7 @@ use ai_lib_core::types::message::{ContentBlock, Message, MessageContent, Message
 
 use super::budget::{ContextBudget, ModelCapacity};
 use super::error::AssembleError;
-use super::token_estimate::{estimate_message_tokens, estimate_tokens};
+use super::token_estimate::estimate_message_tokens;
 
 /// Options for deterministic context assembly (no LLM summarization).
 #[derive(Debug, Clone)]
@@ -171,7 +171,6 @@ fn extend_for_tool_chain(messages: &[Message], start: usize, end: usize, budget:
     trim_leading_orphan_tools(messages, start, end)
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
     use ai_lib_core::types::message::Message;
@@ -264,7 +263,7 @@ mod tests {
 
     #[test]
     fn token_estimate_heuristic() {
-        assert_eq!(estimate_tokens("abcd"), 1);
-        assert_eq!(estimate_tokens("abcdefgh"), 2);
+        assert_eq!(crate::context::estimate_tokens("abcd"), 1);
+        assert_eq!(crate::context::estimate_tokens("abcdefgh"), 2);
     }
 }
