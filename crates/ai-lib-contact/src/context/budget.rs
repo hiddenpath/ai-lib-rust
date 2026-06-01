@@ -20,6 +20,19 @@ impl ModelCapacity {
         }
     }
 
+    /// Parse PT-075 `metadata.models.<id>` entry (schemas/v2/metadata-model-entry.json shape).
+    pub fn from_metadata_model_entry(value: &serde_json::Value) -> Self {
+        let context_window = value
+            .get("context_window")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let max_output_tokens = value
+            .get("max_output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        Self::new(context_window, max_output_tokens)
+    }
+
     pub fn context_window_is_unknown(&self) -> bool {
         self.context_window == 0
     }
@@ -75,5 +88,25 @@ impl ContextBudget {
             reserve_output_tokens: reserve,
             min_tail_messages,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn from_metadata_model_entry_parses_pt075_fixture() {
+        let entry = json!({
+            "context_window": 128000,
+            "max_output_tokens": 16384,
+            "status": "active"
+        });
+        let cap = ModelCapacity::from_metadata_model_entry(&entry);
+        assert_eq!(cap.context_window, 128_000);
+        assert_eq!(cap.max_output_tokens, 16_384);
+        let budget = ContextBudget::from_capacity(cap, 2);
+        assert_eq!(budget.max_input_tokens, 128_000 - 16_384);
     }
 }
