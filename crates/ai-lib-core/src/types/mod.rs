@@ -59,9 +59,11 @@
 pub mod events;
 pub mod execution_result;
 pub mod message;
+pub mod text_tool;
 pub mod tool;
 
 pub use events::StreamingEvent;
 pub use execution_result::{ExecutionMetadata, ExecutionResult, ExecutionUsage};
 pub use message::{Message, MessageRole};
+pub use text_tool::{PromptLevel, StandardTextToolParser, TextToolConfig, TextToolParser};
 pub use tool::{ToolCall, ToolDefinition};

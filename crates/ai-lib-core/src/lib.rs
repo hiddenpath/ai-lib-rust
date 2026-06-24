@@ -62,6 +62,8 @@ pub use types::{
     tool::ToolCall,
 };
 
+pub use types::text_tool::{PromptLevel, StandardTextToolParser, TextToolConfig, TextToolParser};
+
 #[cfg(not(target_arch = "wasm32"))]
 use futures::Stream;
 #[cfg(not(target_arch = "wasm32"))]

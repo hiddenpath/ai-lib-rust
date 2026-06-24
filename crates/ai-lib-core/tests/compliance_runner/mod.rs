@@ -1051,6 +1051,231 @@ fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
     Some(cur)
 }
 
+fn run_text_tool_parse(tc: &TestCase) -> Result<(), Vec<String>> {
+    use ai_lib_core::types::text_tool::{StandardTextToolParser, TextToolConfig, TextToolParser};
+
+    let mut failures = Vec::new();
+    let response_text = tc
+        .input
+        .extra
+        .get("response_text")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    let lenient = tc
+        .input
+        .extra
+        .get("config")
+        .and_then(|c| c.get("lenient_parsing"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let parser = StandardTextToolParser::new(TextToolConfig {
+        lenient_parsing: lenient,
+        ..Default::default()
+    });
+
+    let (remaining, calls) = parser.parse(response_text);
+
+    if let Some(expected_remaining) = tc.expected.extra.get("remaining_text") {
+        let expected = expected_remaining.as_str().unwrap_or_default().trim();
+        if remaining.trim() != expected {
+            failures.push(format!(
+                "remaining_text: expected {:?}, got {:?}",
+                expected,
+                remaining.trim()
+            ));
+        }
+    }
+
+    if let Some(expected_calls) = tc
+        .expected
+        .extra
+        .get("tool_calls")
+        .and_then(Value::as_sequence)
+    {
+        if calls.len() != expected_calls.len() {
+            failures.push(format!(
+                "tool_calls count: expected {}, got {}",
+                expected_calls.len(),
+                calls.len()
+            ));
+        } else {
+            for (i, (actual, expected)) in calls.iter().zip(expected_calls.iter()).enumerate() {
+                let exp_name = expected.get("name").and_then(Value::as_str).unwrap_or("");
+                if actual.name != exp_name {
+                    failures.push(format!(
+                        "tool_calls[{i}].name: expected {exp_name}, got {}",
+                        actual.name
+                    ));
+                }
+                if let Some(exp_args) = expected.get("arguments") {
+                    let exp_json: serde_json::Value =
+                        serde_json::from_str(&serde_json::to_string(exp_args).unwrap_or_default())
+                            .unwrap_or(serde_json::Value::Null);
+                    if actual.arguments != exp_json {
+                        failures.push(format!(
+                            "tool_calls[{i}].arguments: expected {exp_json:?}, got {:?}",
+                            actual.arguments
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
+}
+
+fn run_text_tool_prompt(tc: &TestCase) -> Result<(), Vec<String>> {
+    use ai_lib_core::types::text_tool::{
+        PromptLevel, StandardTextToolParser, TextToolConfig, TextToolParser,
+    };
+    use ai_lib_core::types::tool::{FunctionDefinition, ToolDefinition};
+
+    let mut failures = Vec::new();
+    let config_val = tc.input.extra.get("config");
+    let prompt_level = config_val
+        .and_then(|c| c.get("prompt_level"))
+        .and_then(Value::as_str)
+        .map(|s| match s {
+            "L2" => PromptLevel::L2,
+            "L3" => PromptLevel::L3,
+            _ => PromptLevel::L1,
+        })
+        .unwrap_or(PromptLevel::L1);
+    let locale = config_val
+        .and_then(|c| c.get("locale"))
+        .and_then(Value::as_str)
+        .unwrap_or("en")
+        .to_string();
+
+    let tools: Vec<ToolDefinition> = tc
+        .input
+        .extra
+        .get("tools")
+        .and_then(Value::as_sequence)
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|t| {
+                    let name = t.get("name")?.as_str()?.to_string();
+                    let description = t
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                    Some(ToolDefinition {
+                        tool_type: "function".to_string(),
+                        function: FunctionDefinition {
+                            name,
+                            description,
+                            parameters: None,
+                        },
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let parser = StandardTextToolParser::new(TextToolConfig {
+        prompt_level,
+        locale,
+        ..Default::default()
+    });
+    let prompt = parser.prompt_instructions(&tools);
+
+    if let Some(contains) = tc
+        .expected
+        .extra
+        .get("prompt_contains")
+        .and_then(Value::as_sequence)
+    {
+        for needle in contains {
+            if let Some(s) = needle.as_str() {
+                if !prompt.contains(s) {
+                    failures.push(format!("prompt missing substring: {s:?}"));
+                }
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
+}
+
+#[test]
+fn compliance_text_tool_call() {
+    let compliance_dir = compliance_dir();
+    if !compliance_dir.exists() {
+        eprintln!(
+            "[SKIP] Compliance directory does not exist: {}",
+            compliance_dir.display()
+        );
+        return;
+    }
+
+    let text_tool_dir = compliance_dir.join("cases/10-text-tool-call");
+    if !text_tool_dir.exists() {
+        eprintln!(
+            "[SKIP] Text tool call cases dir does not exist: {}",
+            text_tool_dir.display()
+        );
+        return;
+    }
+
+    let yaml_files = discover_yaml_files(&text_tool_dir);
+    let mut passed = 0u32;
+    let mut failed = 0u32;
+
+    for file in yaml_files {
+        let content = match fs::read_to_string(&file) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("  [WARN] Could not read {}: {}", file.display(), e);
+                continue;
+            }
+        };
+
+        let cases = parse_test_cases(&content);
+        for tc in cases {
+            let result = match tc.input.test_type.as_str() {
+                "text_tool_parse" => run_text_tool_parse(&tc),
+                "text_tool_prompt" => run_text_tool_prompt(&tc),
+                _ => continue,
+            };
+            match result {
+                Ok(()) => {
+                    println!("  [PASS] {} ({})", tc.id, tc.name);
+                    passed += 1;
+                }
+                Err(failures) => {
+                    println!("  [FAIL] {} ({})", tc.id, tc.name);
+                    for f in &failures {
+                        println!("         {}", f);
+                    }
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    println!("\n--- Text tool call summary ---");
+    println!("  Passed: {}", passed);
+    println!("  Failed: {}", failed);
+
+    assert_eq!(
+        failed, 0,
+        "{} text_tool_call compliance test(s) failed",
+        failed
+    );
+}
+
 #[test]
 fn compliance_error_classification() {
     let compliance_dir = compliance_dir();
