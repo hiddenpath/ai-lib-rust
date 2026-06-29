@@ -1,0 +1,54 @@
+# Synced from ai-protocol v2/contracts/anthropic-messages.contract.yaml (PT-079-R1)
+$schema: "https://raw.githubusercontent.com/ailib-official/ai-protocol/main/schemas/v2/provider-contract.json"
+
+contract_version: "1.0"
+provider_id: anthropic
+api_style: anthropic_messages
+api_version: "2023-06-01"
+
+request_mapping:
+  message_format: anthropic_messages
+  role_mapping:
+    system: system
+    user: user
+    assistant: assistant
+    tool: user
+  system_message_handling: top_level_field
+  content_block_mapping:
+    text:
+      wrapper: content_blocks
+    image:
+      format: anthropic_source
+      base64_field: source.data
+      url_field: source.url
+    document:
+      format: anthropic_document
+      type_field: document
+      source_wrapper: anthropic_source
+      base64_field: source.data
+      mime_type_field: source.media_type
+      default_mime_type: application/pdf
+      ref_resolution: error_before_encode
+
+response_mapping:
+  content_path: "$.content[?(@.type=='text')].text"
+  finish_reason_path: "$.stop_reason"
+  usage_path: "$.usage"
+  finish_reason_mapping:
+    end_turn: stop
+    max_tokens: length
+    tool_use: tool_calls
+    stop_sequence: stop
+
+capability_contracts:
+  streaming:
+    protocol: sse
+    supports_usage_in_stream: true
+    supports_tool_streaming: true
+    done_signal: message_stop
+  tools:
+    definition_format: anthropic_tools
+    supports_parallel: true
+
+authentication_contract:
+  method: api_key_header

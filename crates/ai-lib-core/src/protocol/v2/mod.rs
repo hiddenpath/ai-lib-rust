@@ -5,7 +5,13 @@
 //! manifests. Supports auto-promotion from V1 flat manifests.
 
 pub mod capabilities;
+pub mod contracts;
 pub mod manifest;
+pub mod provider_contract;
 
 pub use capabilities::{CapabilitiesV2, Capability, FeatureFlags};
+pub use contracts::{
+    anthropic_messages_contract, contract_for_api_style, gemini_generate_contract,
+};
 pub use manifest::ManifestV2;
+pub use provider_contract::{ContentBlockMapping, DocumentBlockMapping, ProviderContract};

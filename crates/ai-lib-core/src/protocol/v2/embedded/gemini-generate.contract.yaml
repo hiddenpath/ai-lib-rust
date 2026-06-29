@@ -1,0 +1,51 @@
+# Synced from ai-protocol v2/contracts/gemini-generate.contract.yaml (PT-079-R1)
+$schema: "https://raw.githubusercontent.com/ailib-official/ai-protocol/main/schemas/v2/provider-contract.json"
+
+contract_version: "1.0"
+provider_id: google
+api_style: gemini_generate
+api_version: "v1beta"
+
+request_mapping:
+  message_format: gemini_contents
+  role_mapping:
+    system: user
+    user: user
+    assistant: model
+    tool: user
+  system_message_handling: prepend_to_user
+  content_block_mapping:
+    text:
+      field: text
+      wrapper: array_of_parts
+    image:
+      format: gemini_inline_data
+      base64_field: inlineData.data
+      mime_type_field: inlineData.mimeType
+    document:
+      format: gemini_inline_data
+      source_wrapper: gemini_inline_data
+      base64_field: inlineData.data
+      mime_type_field: inlineData.mimeType
+      default_mime_type: application/pdf
+      ref_resolution: error_before_encode
+
+response_mapping:
+  content_path: "$.candidates[0].content.parts[?(@.text)].text"
+  finish_reason_path: "$.candidates[0].finishReason"
+  usage_path: "$.usageMetadata"
+  finish_reason_mapping:
+    STOP: stop
+    MAX_TOKENS: length
+    SAFETY: content_filter
+    RECITATION: content_filter
+
+capability_contracts:
+  streaming:
+    protocol: sse
+    supports_usage_in_stream: true
+  tools:
+    definition_format: gemini_declarations
+
+authentication_contract:
+  method: query_param

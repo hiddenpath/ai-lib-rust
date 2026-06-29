@@ -59,6 +59,7 @@
 pub mod content_encode;
 pub mod events;
 pub mod execution_result;
+pub mod manifest_encode;
 pub mod message;
 pub mod text_tool;
 pub mod tool;
