@@ -4,14 +4,18 @@
 //! `tests/compliance` directory. `classify_error_from_response` comes from `ai-lib-core::client`.
 
 use ai_lib_core::client::classify_error_from_response;
+use ai_lib_core::error_code::StandardErrorCode;
+use ai_lib_core::pipeline::retry::{ResiliencePolicy, RetryConfig, RetryOperator};
 use ai_lib_core::protocol::v2::ManifestV2;
 use ai_lib_core::protocol::ProtocolManifest;
+use ai_lib_core::Error;
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -166,14 +170,17 @@ fn parse_test_cases(content: &str) -> Vec<TestCase> {
     // Normalize line endings to LF (handle Windows CRLF)
     let content = content.replace("\r\n", "\n");
     let mut cases = Vec::new();
+    let strict = env::var("COMPLIANCE_DIR").is_ok();
     // Use serde_yaml's multi-document support via Deserializer
     for document in serde_yaml::Deserializer::from_str(&content) {
         match TestCase::deserialize(document) {
             Ok(tc) => cases.push(tc),
             Err(e) => {
-                // Not all documents are test cases (e.g., comments-only blocks);
-                // log a debug warning and continue.
-                eprintln!("  [WARN] Skipped non-test-case document: {}", e);
+                if strict {
+                    panic!("Failed to parse compliance test case document: {e}");
+                }
+                // Not all documents are test cases (e.g., comments-only blocks).
+                eprintln!("  [WARN] Skipped non-test-case document: {e}");
             }
         }
     }
@@ -414,18 +421,74 @@ fn run_protocol_loading(
     }
 }
 
-fn compute_retry_delay_ms(retry_policy: &Value, attempt: u32) -> u64 {
-    let min_delay = retry_policy
+fn standard_code_from_e_code(code: &str) -> Option<StandardErrorCode> {
+    [
+        StandardErrorCode::InvalidRequest,
+        StandardErrorCode::Authentication,
+        StandardErrorCode::PermissionDenied,
+        StandardErrorCode::NotFound,
+        StandardErrorCode::RequestTooLarge,
+        StandardErrorCode::RateLimited,
+        StandardErrorCode::QuotaExhausted,
+        StandardErrorCode::ServerError,
+        StandardErrorCode::Overloaded,
+        StandardErrorCode::Timeout,
+        StandardErrorCode::Conflict,
+        StandardErrorCode::Cancelled,
+        StandardErrorCode::Unknown,
+    ]
+    .into_iter()
+    .find(|c| c.code() == code)
+}
+
+fn compliance_remote_error(error: &Value) -> Error {
+    let error_name = error
+        .get("error_name")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let retryable = error
+        .get("retryable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let status = match error_name {
+        "rate_limited" => 429,
+        "invalid_request" => 400,
+        "server_error" => 500,
+        "overloaded" => 503,
+        "timeout" => 504,
+        _ => 500,
+    };
+    Error::Remote {
+        status,
+        class: error_name.to_string(),
+        message: "compliance".into(),
+        retryable,
+        fallbackable: StandardErrorCode::from_error_class(error_name).fallbackable(),
+        retry_after_ms: None,
+        context: None,
+    }
+}
+
+fn compliance_retry_operator(retry_policy: &Value) -> RetryOperator {
+    let max_retries = retry_policy
+        .get("max_retries")
+        .and_then(Value::as_u64)
+        .unwrap_or(3) as u32;
+    let min_ms = retry_policy
         .get("min_delay_ms")
         .and_then(Value::as_u64)
         .unwrap_or(1000);
-    let max_delay = retry_policy
+    let max_ms = retry_policy
         .get("max_delay_ms")
         .and_then(Value::as_u64)
         .unwrap_or(60_000);
-    let exponent = attempt.saturating_sub(1);
-    let delay = min_delay.saturating_mul(1u64 << exponent.min(20));
-    delay.min(max_delay)
+    RetryOperator::new(RetryConfig {
+        max_retries,
+        min_delay: Duration::from_millis(min_ms),
+        max_delay: Duration::from_millis(max_ms),
+        jitter: false,
+        retry_on_status: vec![429, 500, 502, 503, 504],
+    })
 }
 
 fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
@@ -438,14 +501,6 @@ fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         .get("error_name")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let retryable = error
-        .get("retryable")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let max_retries = retry_policy
-        .get("max_retries")
-        .and_then(Value::as_u64)
-        .unwrap_or(0) as u32;
 
     let mut retry_on_error_code = HashSet::new();
     if let Some(items) = retry_policy
@@ -459,9 +514,21 @@ fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         }
     }
 
-    let within_limit = attempt <= max_retries;
-    let matches_policy = retry_on_error_code.is_empty() || retry_on_error_code.contains(error_name);
-    let should_retry = within_limit && retryable && matches_policy;
+    let operator = compliance_retry_operator(retry_policy);
+    let remote_err = compliance_remote_error(error);
+    let attempt_0 = attempt.saturating_sub(1);
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("compliance retry runtime");
+    let delay_opt = rt.block_on(operator.should_retry(attempt_0, &remote_err));
+    let mut should_retry = delay_opt.is_some();
+
+    if !retry_on_error_code.is_empty() && !retry_on_error_code.contains(error_name) {
+        should_retry = false;
+    }
+
     let expected_should_retry = tc
         .expected
         .extra
@@ -491,7 +558,7 @@ fn run_retry_decision(tc: &TestCase) -> Result<(), Vec<String>> {
                 .get(Value::String("max".to_string()))
                 .and_then(Value::as_u64)
                 .unwrap_or(u64::MAX);
-            let actual_delay = compute_retry_delay_ms(retry_policy, attempt);
+            let actual_delay = delay_opt.map(|d| d.as_millis() as u64).unwrap_or(0);
             if actual_delay < min_expected || actual_delay > max_expected {
                 failures.push(format!(
                     "delay_ms: expected in [{}, {}], got {}",
@@ -992,10 +1059,9 @@ fn run_fallback_decision(tc: &TestCase) -> Result<(), Vec<String>> {
         .get("error_code")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let should = matches!(
-        code,
-        "E1002" | "E2001" | "E2002" | "E3001" | "E3002" | "E3003"
-    );
+    let should = standard_code_from_e_code(code)
+        .map(|c| c.fallbackable())
+        .unwrap_or(false);
     let expected = tc
         .expected
         .extra
