@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.0 - 2026-07-01
+
+### Milestone
+
+- **Wave-5 v1.0.0**: E/P separation frozen (`ai-lib-core` / `ai-lib-contact` / facade); PT-073g sign-off; pins `@ailib-official/ai-protocol@1.0.0`.
+
+### Added
+
+- PT-073g remediation: transport panic fix, compliance prod runners, CI protocol pin, fail-closed fixtures (#12–#17).
+
+### Changed
+
+- Workspace crate versions aligned to **1.0.0** (`ai-lib-core` → `ai-lib-contact` → `ai-lib-rust`).
+- README feature matrix and version examples updated for 1.0.0.
+
 ## 0.9.6 - 2026-05-07
 
 ### Added

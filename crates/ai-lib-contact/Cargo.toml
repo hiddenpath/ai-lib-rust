@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-contact"
-version = "0.9.6"
+version = "1.0.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -13,7 +13,7 @@ name = "ai_lib_contact"
 path = "src/lib.rs"
 
 [dependencies]
-ai-lib-core = { version = "0.9.6", path = "../ai-lib-core" }
+ai-lib-core = { version = "1.0.0", path = "../ai-lib-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["rt", "macros", "sync", "time"] }

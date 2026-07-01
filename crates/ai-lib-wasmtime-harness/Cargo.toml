@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-wasmtime-harness"
-version = "0.9.6"
+version = "1.0.0"
 edition = "2021"
 publish = false
 description = "PT-073: wasmtime integration tests for ai-lib-wasm (isolated; heavy deps)"

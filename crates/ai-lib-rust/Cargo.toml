@@ -1,6 +1,6 @@
 [package]
 name = "ai-lib-rust"
-version = "0.9.6"
+version = "1.0.0"
 edition = "2021"
 authors = ["AI-Protocol Team"]
 license = "MIT OR Apache-2.0"
@@ -24,8 +24,8 @@ include = [
 ]
 
 [dependencies]
-ai-lib-core = { version = "0.9.6", path = "../ai-lib-core" }
-ai-lib-contact = { version = "0.9.6", path = "../ai-lib-contact", default-features = false }
+ai-lib-core = { version = "1.0.0", path = "../ai-lib-core" }
+ai-lib-contact = { version = "1.0.0", path = "../ai-lib-contact", default-features = false }
 
 # Direct deps for examples, binaries, and integration tests (same surface as pre-workspace root crate).
 tokio = { version = "1.0", features = ["full"] }

@@ -154,13 +154,13 @@ Enable with:
 ```toml
 [dependencies]
 # Lean core (default)
-ai-lib-rust = "0.9.6"
+ai-lib-rust = "1.0.0"
 
 # With specific capabilities
-ai-lib-rust = { version = "0.9.6", features = ["embeddings", "telemetry"] }
+ai-lib-rust = { version = "1.0.0", features = ["embeddings", "telemetry"] }
 
 # Everything enabled
-ai-lib-rust = { version = "0.9.6", features = ["full"] }
+ai-lib-rust = { version = "1.0.0", features = ["full"] }
 ```
 
 ## 🗺️ Capability map (layered tools)
@@ -344,7 +344,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ai-lib-rust = "0.9.6"
+ai-lib-rust = "1.0.0"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 ```
