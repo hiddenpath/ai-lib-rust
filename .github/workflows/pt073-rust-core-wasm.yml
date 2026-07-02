@@ -1,5 +1,5 @@
 # PT-073 (Wave-5): ai-lib-core compliance, E/P boundary (Rust), WASI wasm + wasmtime harness.
-# Order: EP check â†’ core tests â†’ wasm release build â†’ wasmtime test â†’ contact compile smoke.
+# Order: EP check â†?core tests â†?wasm release build â†?wasmtime test â†?contact compile smoke.
 
 name: PT-073 Rust (core + EP + WASM)
 
@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ailib-official/ai-protocol
-          ref: main
+          ref: v1.0.0
           path: ai-protocol
 
       - name: Install Rust (stable + wasm32-wasip1)
@@ -49,12 +49,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: E/P boundary â€” Rust core sources
+      - name: E/P boundary â€?Rust core sources
         run: |
           python "${{ github.workspace }}/ai-protocol/tests/compliance/ep-boundary/check_ep_boundary.py" \
             --rust-root "${{ github.workspace }}/ai-lib-rust"
 
-      - name: ai-lib-core â€” full test suite (incl. compliance_from_core)
+      - name: ai-lib-core â€?full test suite (incl. compliance_from_core)
         env:
           COMPLIANCE_DIR: ${{ github.workspace }}/ai-protocol/tests/compliance
         working-directory: ai-lib-rust
@@ -64,10 +64,10 @@ jobs:
         working-directory: ai-lib-rust
         run: cargo build -p ai-lib-wasm --target wasm32-wasip1 --release
 
-      - name: Wasmtime â€” protocol_loading + message_building harness
+      - name: Wasmtime â€?protocol_loading + message_building harness
         working-directory: ai-lib-rust
         run: cargo test -p ai-lib-wasmtime-harness --test wasm_compliance
 
-      - name: ai-lib-contact â€” compile tests (P-layer against core)
+      - name: ai-lib-contact â€?compile tests (P-layer against core)
         working-directory: ai-lib-rust
         run: cargo test -p ai-lib-contact --no-run
