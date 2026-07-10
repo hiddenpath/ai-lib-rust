@@ -14,7 +14,7 @@
           ]
         },
         {
-          "pattern": "^(https://raw\\.githubusercontent\\.com/hiddenpath/ai-protocol/(main|master|v\\d+\\.\\d+)/schemas/v1\\.json|\\.\\./schemas/v1\\.json)$"
+          "pattern": "^(https://raw\\.githubusercontent\\.com/ailib-official/ai-protocol/(main|v\\d+\\.\\d+)/schemas/v1\\.json|\\.\\./schemas/v1\\.json)$"
         }
       ],
       "description": "Schema reference: GitHub raw URL (preferred) or relative path (for local development)"
